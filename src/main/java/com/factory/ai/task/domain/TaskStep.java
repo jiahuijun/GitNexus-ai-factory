@@ -42,6 +42,7 @@ public class TaskStep {
     public String getContextSnapshot() { return contextSnapshot; }
     public void setContextSnapshot(String c) { this.contextSnapshot = c; }
     public void setReaggregatedAt(LocalDateTime t) { this.reaggregatedAt = t; }
+    public LocalDateTime getReaggregatedAt() { return reaggregatedAt; }
     public boolean isNeedsReview() { return needsReview; }
     public void setNeedsReview(boolean v) { this.needsReview = v; }
     public Long getTaskId() { return taskId; }
