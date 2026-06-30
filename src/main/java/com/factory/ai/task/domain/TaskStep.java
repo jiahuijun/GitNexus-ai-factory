@@ -28,6 +28,7 @@ public class TaskStep {
         this.taskId = taskId; this.stepName = stepName; this.targetSymbol = targetSymbol;
     }
     public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
     public String getTargetSymbol() { return targetSymbol; }
     public String getTargetFile() { return targetFile; }
     public void setTargetFile(String f) { this.targetFile = f; }
