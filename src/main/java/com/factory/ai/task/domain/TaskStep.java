@@ -45,4 +45,6 @@ public class TaskStep {
     public void setNeedsReview(boolean v) { this.needsReview = v; }
     public Long getTaskId() { return taskId; }
     public String getStepName() { return stepName; }
+    public Long getAssigneeId() { return assigneeId; }
+    public void setAssigneeId(Long a) { this.assigneeId = a; }
 }
