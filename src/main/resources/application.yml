@@ -10,19 +10,20 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-  # Spring AI 配置
+  # 排除 Spring AI MCP SSE 自动配置——GitNexus 使用 Streamable HTTP 协议,
+  # 由 GitNexusMcpClientConfiguration 提供自定义 McpSyncClient bean。
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.mcp.client.autoconfigure.McpClientAutoConfiguration
+      - org.springframework.ai.mcp.client.autoconfigure.McpToolCallbackAutoConfiguration
+      - org.springframework.ai.mcp.client.autoconfigure.StdioTransportAutoConfiguration
+      - org.springframework.ai.mcp.client.autoconfigure.SseHttpClientTransportAutoConfiguration
+      - org.springframework.ai.mcp.client.autoconfigure.SseWebFluxTransportAutoConfiguration
+  # Spring AI OpenAI 配置
   ai:
-    mcp:
-      client:
-        # Spring AI 1.0.0 GA MCP client uses SSE transport (no http/streamable-http key exists).
-        # Verified via McpSseClientProperties.CONFIG_PREFIX = "spring.ai.mcp.client.sse".
-        # The connections map key is an arbitrary client name (here: "gitnexus").
-        sse:
-          connections:
-            gitnexus:
-              url: ${GITNEXUS_MCP_URL:http://localhost:4747/api/mcp}
     openai:
-      base-url: ${LLM_BASE_URL:http://localhost:11434/v1}
+      # Spring AI 会自动追加 /v1/chat/completions，base-url 不要带 /v1
+      base-url: ${LLM_BASE_URL:http://localhost:11434}
       api-key: ${LLM_API_KEY:dummy}
       chat:
         options:
@@ -31,6 +32,8 @@ spring:
 
 gitnexus:
   base-url: http://localhost:4747
+  mcp:
+    url: ${GITNEXUS_MCP_URL:http://localhost:4747/api/mcp}
   default-repo: GitNexus
 
 factory:

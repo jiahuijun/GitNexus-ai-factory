@@ -23,9 +23,9 @@ class SmokeTest {
 
     @Test
     void decomposeWithRealGitNexusAndLlm() {
-        // 前提:GitNexus 在 localhost:4747 跑,索引了某 repo
+        // 前提:GitNexus 在 localhost:4747 跑,索引了 GitNexus repo
         //       LLM 在 localhost:11434 跑,模型 qwen2.5:14b 已拉
-        Long taskId = decomp.decompose("在某个已索引的 repo 里加一个简单方法", "repo", 1L);
+        Long taskId = decomp.decompose("在 GitNexus 项目里加一个简单的工具方法", "GitNexus", 1L);
 
         var task = tasks.findById(taskId).orElseThrow();
         // 要么成功(READY,有 step),要么空草稿(DECOMPOSING_FAILED)

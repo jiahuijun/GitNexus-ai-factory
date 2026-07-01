@@ -11,18 +11,20 @@ spring:
     open-in-view: false
   flyway:
     enabled: false
-  # 不排除 auto-config — smoke 测试要连真实端点
+  # 排除 Spring AI MCP SSE 自动配置——GitNexus 使用 Streamable HTTP 协议,
+  # 由 GitNexusMcpClientConfiguration 提供自定义 McpSyncClient bean。
+  # OpenAI 自动配置保留——smoke 测试需要真实 LLM 调用。
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.mcp.client.autoconfigure.McpClientAutoConfiguration
+      - org.springframework.ai.mcp.client.autoconfigure.McpToolCallbackAutoConfiguration
+      - org.springframework.ai.mcp.client.autoconfigure.StdioTransportAutoConfiguration
+      - org.springframework.ai.mcp.client.autoconfigure.SseHttpClientTransportAutoConfiguration
+      - org.springframework.ai.mcp.client.autoconfigure.SseWebFluxTransportAutoConfiguration
   ai:
-    mcp:
-      client:
-        # Spring AI 1.0.0 GA: SSE transport. Key verified from
-        # McpSseClientProperties.CONFIG_PREFIX = "spring.ai.mcp.client.sse".
-        sse:
-          connections:
-            gitnexus:
-              url: http://localhost:4747/api/mcp
     openai:
-      base-url: http://localhost:11434/v1
+      # Spring AI 会自动追加 /v1/chat/completions，base-url 不要带 /v1
+      base-url: http://localhost:11434
       api-key: dummy
       chat:
         options:
@@ -33,3 +35,9 @@ factory:
   clients:
     real:
       enabled: true
+
+gitnexus:
+  base-url: http://localhost:4747
+  mcp:
+    # GitNexus 监听 IPv6 [::1]，Java HttpClient 默认解析 localhost 为 IPv4 127.0.0.1 会导致连接失败
+    url: http://[::1]:4747/api/mcp
