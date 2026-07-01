@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
  *   <li><b>Current Source</b>：GitNexus 拉取的最新源码，避免基于过快照修改</li>
  *   <li><b>Callers</b>：谁调用了该符号——改动必须兼容这些调用方</li>
  *   <li><b>Blast Radius</b>：改该符号会影响谁——风险提示</li>
+ *   <li><b>Design Detail</b>：LLM 输出的详细设计方案（类名、方法签名、伪代码、依赖）</li>
  *   <li><b>Instruction</b>：执行指令，含 {@code complete_task(id)} 提交步骤</li>
  *   <li><b>Constraints</b>：硬约束，不得改未列入文件、不得破坏调用方契约</li>
  * </ul>
@@ -71,8 +72,10 @@ public class PromptAssemblyService {
             %s
             # Blast Radius (改这个符号会影响谁 — 风险提示)
             %s
+            # Design Detail (详细设计方案 — 按此方案编码)
+            %s
             # Instruction
-            在上述文件中实现需求。直接修改文件，不要只输出代码片段。
+            按上述 Design Detail 方案实现。直接修改文件，不要只输出代码片段。
             遵循现有代码风格。完成后跑相关测试。
             最后调用 complete_task(%d) 提交。
 
@@ -85,6 +88,7 @@ public class PromptAssemblyService {
                 ctx.sourceContent() != null ? ctx.sourceContent() : "(unavailable)",
                 callers.isBlank() ? "(none)" : callers,
                 blast.isBlank() ? "(none)" : blast,
+                step.getDesignDetail() != null ? step.getDesignDetail() : "(无详细设计，需自行设计)",
                 step.getId()
             );
     }

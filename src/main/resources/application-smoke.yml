@@ -5,12 +5,9 @@ spring:
     url: jdbc:h2:mem:smoketest;MODE=MySQL;DB_CLOSE_DELAY=-1
     username: sa
     password:
-  jpa:
-    hibernate:
-      ddl-auto: create-drop
-    open-in-view: false
   flyway:
-    enabled: false
+    enabled: true
+    locations: classpath:db/migration
   # 排除 Spring AI MCP SSE 自动配置——GitNexus 使用 Streamable HTTP 协议,
   # 由 GitNexusMcpClientConfiguration 提供自定义 McpSyncClient bean。
   # OpenAI 自动配置保留——smoke 测试需要真实 LLM 调用。
@@ -38,7 +35,13 @@ factory:
       enabled: true
 
 gitnexus:
-  base-url: http://localhost:4747
   mcp:
     # GitNexus 监听 IPv6 [::1]，Java HttpClient 默认解析 localhost 为 IPv4 127.0.0.1 会导致连接失败
     url: http://[::1]:4747/api/mcp
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto

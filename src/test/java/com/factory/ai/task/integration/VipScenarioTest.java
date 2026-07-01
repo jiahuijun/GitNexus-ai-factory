@@ -3,7 +3,7 @@ package com.factory.ai.task.integration;
 import com.factory.ai.gitnexus.GitNexusClient;
 import com.factory.ai.gitnexus.dto.*;
 import com.factory.ai.task.domain.*;
-import com.factory.ai.task.repository.*;
+import com.factory.ai.task.mapper.*;
 import com.factory.ai.task.service.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +12,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -19,13 +20,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@Transactional
 class VipScenarioTest {
 
     @Autowired TaskDecompositionService decomp;
     @Autowired TaskClaimService claim;
     @Autowired TaskCompletionService complete;
-    @Autowired TaskStepRepository steps;
-    @Autowired TaskRepository tasks;
+    @Autowired TaskStepMapper steps;
+    @Autowired TaskMapper tasks;
 
     @TestConfiguration
     static class TestBeans {
@@ -53,8 +55,8 @@ class VipScenarioTest {
 
         @Bean @Primary LlmGateway llm() {
             return (req, ctx) -> List.of(
-                new LlmGateway.TaskDraft("加getVipLevel", "UserService", "在UserService加getVipLevel方法"),
-                new LlmGateway.TaskDraft("加HTTP接口", "UserController", "在UserController加VIP查询接口")
+                new LlmGateway.TaskDraft("加getVipLevel", "UserService", "产出物: UserService.getVipLevel(userId)\n签名: public VipLevel getVipLevel(Long userId)\n实现: 1. 查 user 表获取 level 字段 2. 映射为 VipLevel 枚举返回\n依赖: UserRepository.findById()"),
+                new LlmGateway.TaskDraft("加HTTP接口", "UserController", "产出物: UserController.getVipLevel()\n签名: @GetMapping(\"/vip/{userId}\") public VipLevel getVipLevel(@PathVariable Long userId)\n实现: 调用 UserService.getVipLevel() 返回结果\n依赖: UserService.getVipLevel()")
             );
         }
     }
@@ -65,12 +67,12 @@ class VipScenarioTest {
         Long taskId = decomp.decompose("增加VIP等级查询", "repo", 1L);
 
         // A=UserService 应 READY, B=UserController 应 PENDING(dep=1)
-        var ready = steps.findByTaskIdAndStatus(taskId, TaskStepStatus.READY);
+        var ready = steps.findByTaskIdAndStatus(taskId, TaskStepStatus.READY.name());
         assertEquals(1, ready.size());
         var a = ready.get(0);
         assertEquals("UserService", a.getTargetSymbol());
 
-        var pending = steps.findByTaskIdAndStatus(taskId, TaskStepStatus.PENDING);
+        var pending = steps.findByTaskIdAndStatus(taskId, TaskStepStatus.PENDING.name());
         assertEquals(1, pending.size());
         var b = pending.get(0);
         assertEquals(1, b.getDependsOnCount());
@@ -85,7 +87,8 @@ class VipScenarioTest {
         assertTrue(ok);
 
         // B 现在 READY 且 prompt 已重聚合
-        var bAfter = steps.findById(b.getId()).orElseThrow();
+        var bAfter = steps.selectById(b.getId());
+        assertNotNull(bAfter);
         assertEquals(TaskStepStatus.READY, bAfter.getStatus());
         assertEquals(0, bAfter.getDependsOnCount());
         assertNotNull(bAfter.getReaggregatedAt());

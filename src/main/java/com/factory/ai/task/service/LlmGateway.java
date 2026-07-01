@@ -38,8 +38,10 @@ public interface LlmGateway {
      * 任务草稿记录，由 LLM 输出的单条拆解结果。
      *
      * @param stepName      动词短语，描述该任务做什么（如 "加getVipLevel方法"）
-     * @param targetSymbol  真实符号名，必须来自摸底结果；用于后续 GitNexus context()/impact() 调用
-     * @param instruction   给执行员工的简明指令
+     * @param targetSymbol  真实符号名（类名/函数名/方法名，不含文件名），必须来自摸底结果；
+     *                      用于后续 GitNexus context()/impact() 调用
+     * @param designDetail  详细设计方案，包含具体的产出物类名、方法名、方法签名、
+     *                      实现思路（伪代码或关键步骤）、依赖的其他模块
      */
-    record TaskDraft(String stepName, String targetSymbol, String instruction) {}
+    record TaskDraft(String stepName, String targetSymbol, String designDetail) {}
 }

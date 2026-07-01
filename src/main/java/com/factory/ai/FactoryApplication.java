@@ -1,5 +1,6 @@
 package com.factory.ai;
 
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -12,9 +13,13 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  *
  * <p>{@link SpringBootApplication} 注解组合了 {@code @EnableAutoConfiguration}、
  * {@code @ComponentScan} 与 {@code @Configuration}，会自动扫描 {@code com.factory.ai}
- * 及其子包下的所有组件（Controller / Service / Repository 等），并按 classpath 依赖自动装配配置。
+ * 及其子包下的所有组件（Controller / Service / Mapper 等），并按 classpath 依赖自动装配配置。
+ *
+ * <p>{@link MapperScan} 指示 MyBatis-Plus 扫描 {@code com.factory.ai.task.mapper} 包下的
+ * Mapper 接口并注册为 Bean。
  */
 @SpringBootApplication
+@MapperScan("com.factory.ai.task.mapper")
 public class FactoryApplication {
 
     /**

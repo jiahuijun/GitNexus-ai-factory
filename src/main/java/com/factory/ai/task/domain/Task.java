@@ -1,6 +1,8 @@
 package com.factory.ai.task.domain;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 
 /**
  * 任务实体，表示一个父级需求（例如"加VIP等级查询"）。
@@ -9,28 +11,27 @@ import jakarta.persistence.*;
  * 状态机管理整体生命周期：从分解中（DECOMPOSING）到就绪（READY）、部分完成（PARTIAL）、
  * 最终完成（DONE）或取消（CANCELLED）。
  *
- * <p>该实体由 {@code task} 表持久化，主键自增，需求描述以 LOB 形式存储以支持较长文本。
+ * <p>该实体由 {@code task} 表持久化，主键自增，需求描述以 text 形式存储以支持较长文本。
  */
-@Entity
-@Table(name = "task")
+@TableName("task")
 public class Task {
     /** 主键，数据库自增 ID */
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 原始需求描述文本，使用 LOB 以承载较长内容 */
-    @Lob private String requirement;
+    /** 原始需求描述文本，使用 text 以承载较长内容 */
+    private String requirement;
 
     /**
      * 任务整体状态，默认从分解中开始。
-     * 使用字符串枚举持久化以便于人工查看数据库。
+     * MyBatis-Plus 默认将枚举按 name() 存为字符串，与 JPA @Enumerated(STRING) 一致。
      */
-    @Enumerated(EnumType.STRING) private TaskStatus status = TaskStatus.DECOMPOSING;
+    private TaskStatus status = TaskStatus.DECOMPOSING;
 
     /** 创建人用户 ID */
     private Long createdBy;
 
-    /** JPA 要求的无参构造器 */
+    /** 无参构造器 */
     public Task() {}
 
     /**

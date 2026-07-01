@@ -58,15 +58,16 @@ class SpringAiMcpGitNexusClientTest {
 
     @Test
     void contextMapsMcpTextToSymbolContext() {
-        // MCP context nests symbol under root.symbol, calls under root.incoming.calls, methods under root.outgoing.has_method.
+        // MCP context nests symbol under root.symbol (with content field for source code),
+        // calls under root.incoming.calls, methods under root.outgoing.has_method.
         String json = """
             {
               "status":"found",
               "symbol":{
                 "uid":"uid1","name":"UserService","kind":"Class",
-                "filePath":"src/UserService.java","startLine":10,"endLine":100
+                "filePath":"src/UserService.java","startLine":10,"endLine":100,
+                "content":"public class UserService {}"
               },
-              "sourceContent":"public class UserService {}",
               "incoming":{
                 "calls":[{"uid":"Class:p:Ctrl","name":"Ctrl","filePath":"src/Ctrl.java","startLine":1,"endLine":50}],
                 "imports":[]

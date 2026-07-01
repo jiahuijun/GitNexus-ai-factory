@@ -1,6 +1,6 @@
 package com.factory.ai.task.integration;
 
-import com.factory.ai.task.repository.*;
+import com.factory.ai.task.mapper.*;
 import com.factory.ai.task.service.*;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -18,8 +18,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class SmokeTest {
 
     @Autowired TaskDecompositionService decomp;
-    @Autowired TaskRepository tasks;
-    @Autowired TaskStepRepository steps;
+    @Autowired TaskMapper tasks;
+    @Autowired TaskStepMapper steps;
 
     @Test
     void decomposeWithRealGitNexusAndLlm() {
@@ -27,7 +27,8 @@ class SmokeTest {
         //       LLM 在 localhost:11434 跑,模型 qwen2.5:14b 已拉
         Long taskId = decomp.decompose("在 GitNexus 项目里加一个简单的工具方法", "GitNexus", 1L);
 
-        var task = tasks.findById(taskId).orElseThrow();
+        var task = tasks.selectById(taskId);
+        assertNotNull(task);
         // 要么成功(READY,有 step),要么空草稿(DECOMPOSING_FAILED)
         assertTrue(
             task.getStatus().name().equals("READY") || task.getStatus().name().equals("DECOMPOSING_FAILED"),
@@ -35,7 +36,7 @@ class SmokeTest {
         );
 
         if (task.getStatus().name().equals("READY")) {
-            var taskSteps = steps.findAll().stream()
+            var taskSteps = steps.selectList(null).stream()
                 .filter(s -> s.getTaskId().equals(taskId)).toList();
             assertFalse(taskSteps.isEmpty());
             assertNotNull(taskSteps.get(0).getGeneratedPrompt());

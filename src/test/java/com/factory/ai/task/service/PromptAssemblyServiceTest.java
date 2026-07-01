@@ -12,6 +12,7 @@ class PromptAssemblyServiceTest {
     void assemblesPromptWithAllSections() {
         var step = new TaskStep(1L, "加getVipLevel", "UserService");
         step.setTargetFile("src/UserService.java");
+        step.setDesignDetail("产出物: UserService.getVipLevel()\n签名: public VipLevel getVipLevel(Long userId)\n实现: 查 user.level 映射枚举");
         var ctx = new SymbolContext(
             "uid", "UserService", "Class", "src/UserService.java", 10, 100,
             "public class UserService { }",
@@ -31,6 +32,8 @@ class PromptAssemblyServiceTest {
         assertTrue(prompt.contains("# Callers"));
         assertTrue(prompt.contains("UserController"));
         assertTrue(prompt.contains("# Blast Radius"));
+        assertTrue(prompt.contains("# Design Detail"));
+        assertTrue(prompt.contains("getVipLevel(Long userId)"));
         assertTrue(prompt.contains("complete_task"));
         assertTrue(prompt.contains("不要改未列入 Target 的文件"));
     }

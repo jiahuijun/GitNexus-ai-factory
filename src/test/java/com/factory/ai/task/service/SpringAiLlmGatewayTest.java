@@ -29,8 +29,8 @@ class SpringAiLlmGatewayTest {
         // promptSpec.system(any).user(any) → promptSpec;.call() → callResponseSpec;
         // callResponseSpec.entity(any(ParameterizedTypeReference)) → List<TaskDraft>
         var drafts = List.of(
-            new LlmGateway.TaskDraft("加getVipLevel", "UserService", "在 UserService 加 getVipLevel"),
-            new LlmGateway.TaskDraft("加HTTP接口", "UserController", "在 Controller 加接口")
+            new LlmGateway.TaskDraft("加getVipLevel", "UserService", "产出物: UserService.getVipLevel()\n签名: public VipLevel getVipLevel(Long userId)\n实现: 查 user.level 映射枚举\n依赖: UserRepository"),
+            new LlmGateway.TaskDraft("加HTTP接口", "UserController", "产出物: UserController.getVipLevel()\n签名: @GetMapping(\"/vip/{id}\") public VipLevel getVipLevel(@PathVariable Long id)\n实现: 调用 UserService.getVipLevel()\n依赖: UserService")
         );
 
         when(chatClientBuilder.build()).thenReturn(chatClient);

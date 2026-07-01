@@ -1,7 +1,6 @@
 package com.factory.ai.task.service;
 
 import com.factory.ai.gitnexus.dto.QueryResult;
-import com.factory.ai.gitnexus.dto.SymbolRef;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -16,9 +15,9 @@ import java.util.stream.Collectors;
  *
  * <p>{@link #SYSTEM_PROMPT} 规定了三条核心规则：
  * <ol>
- *   <li>输出 JSON 数组，字段含 stepName / targetSymbol / instruction</li>
- *   <li>targetSymbol 必须来自摸底结果，不得凭空发明；摸底为空 → 输出空数组</li>
- *   <li>只输出 JSON，不附加任何 markdown 标记或解释文字</li>
+ *   <li>输出 JSON 数组，字段含 stepName / targetSymbol / designDetail</li>
+ *   <li>targetSymbol 必须来自摸底结果（具体类名/函数名/方法名，非文件名），不得凭空发明；摸底为空 → 输出空数组</li>
+ *   <li>designDetail 必须包含产出物类名、方法签名、实现思路（伪代码）、依赖模块</li>
  * </ol>
  * 这保证下游可直接反序列化为 {@code List<TaskDraft>}。</p>
  *
@@ -49,15 +48,22 @@ public class LlmPromptBuilder {
         # 输出规则
         1. 输出一个 JSON 数组,每个元素是一个任务草稿,字段:
            - stepName: 动词短语,描述这个任务做什么(如 "加getVipLevel方法")
-           - targetSymbol: 真实符号名,**必须从摸底结果的符号列表中选取**,不得凭空发明
-           - instruction: 给执行员工的指令,简明扼要
+           - targetSymbol: 真实符号名,**必须从摸底结果的符号列表中选取**,不得凭空发明。
+             **必须是具体的类名、函数名或方法名,不能是文件名**(如应选 "UserService" 而非 "UserService.java")
+           - designDetail: 详细设计方案,必须包含以下内容:
+             * **产出物类名**: 要新建或修改的类名(如 `HealthCheckService`)
+             * **方法名与签名**: 要新建或修改的方法名及完整签名(如 `public HealthStatus checkHealth()`)
+             * **实现思路**: 用伪代码或编号步骤描述实现逻辑,具体到变量名、关键判断分支、返回值构造
+             * **依赖模块**: 本实现依赖的其他类/模块(如 "依赖 RepoManager.getRepoList()")
         2. 拆解原则:
            - 每个任务改一个符号(类或方法),粒度小、可独立验证
            - 跨符号的需求拆成多个任务(如改 Service + 改 Controller = 两个任务)
            - 不要拆得过细(改一个方法的签名 + 改它的实现 = 一个任务)
            - 不输出与需求无关的任务(不要"加日志""加测试"等噪音)
-        3. targetSymbol 必须是摸底结果里出现过的符号名。摸底结果为空 → 输出空数组 []。
-        4. 只输出 JSON 数组,不要任何其他文字、解释、markdown 代码块标记。
+        3. targetSymbol 必须是摸底结果里出现过的具体符号名(类名/函数名/方法名)。
+           摸底结果为空 → 输出空数组 []。
+        4. designDetail 要足够详细,让执行者可以直接按方案编码,不需要再做额外的设计决策。
+        5. 只输出 JSON 数组,不要任何其他文字、解释、markdown 代码块标记。
         """;
 
     /**

@@ -1,6 +1,10 @@
 package com.factory.ai.task.domain;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.Version;
+
 import java.time.LocalDateTime;
 
 /**
@@ -18,11 +22,10 @@ import java.time.LocalDateTime;
  *
  * <p>该实体由 {@code task_step} 表持久化。
  */
-@Entity
-@Table(name = "task_step")
+@TableName("task_step")
 public class TaskStep {
     /** 主键，数据库自增 ID */
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Long id;
 
     /** 所属父任务 ID */
@@ -38,7 +41,7 @@ public class TaskStep {
     private String targetFile;
 
     /** 步骤状态，默认 PENDING（等待前置依赖完成） */
-    @Enumerated(EnumType.STRING) private TaskStepStatus status = TaskStepStatus.PENDING;
+    private TaskStepStatus status = TaskStepStatus.PENDING;
 
     /** 认领人（用户或 AI 实例）ID */
     private Long assigneeId;
@@ -51,22 +54,30 @@ public class TaskStep {
 
     /**
      * 乐观锁版本号。
-     * <p>JPA 通过该字段在 update 时校验版本，若并发修改导致版本不一致则抛出
-     * {@code OptimisticLockException}，从而防止丢失更新。
+     * <p>MyBatis-Plus 通过 {@link Version} 注解 + {@code OptimisticLockerInnerInterceptor}
+     * 在 update 时自动校验版本并递增，防止丢失更新。
      */
     @Version private int version;
 
     /**
-     * 上下文快照（LOB）。
+     * 上下文快照。
      * <p>记录本步骤执行前相关代码/依赖的快照，供 AI 生成提示词或事后审计使用。
      */
-    @Lob private String contextSnapshot;
+    private String contextSnapshot;
 
     /**
-     * AI 生成的执行提示词（LOB）。
+     * AI 生成的执行提示词。
      * <p>基于上下文快照和步骤信息由 AI 生成，指导具体执行。
      */
-    @Lob private String generatedPrompt;
+    private String generatedPrompt;
+
+    /**
+     * LLM 输出的详细设计方案。
+     * <p>包含具体的产出物类名、方法名、方法签名、实现思路（伪代码或关键步骤），
+     * 由 LLM 拆解时输出，存入 {@code design_detail} 列，
+     * 供 {@code PromptAssemblyService} 组装执行提示词时嵌入"设计详情"区。
+     */
+    private String designDetail;
 
     /**
      * 上下文重新聚合时间。
@@ -83,7 +94,7 @@ public class TaskStep {
     /** 最近更新时间 */
     private LocalDateTime updatedAt;
 
-    /** JPA 要求的无参构造器 */
+    /** 无参构造器 */
     public TaskStep() {}
 
     /**
@@ -142,6 +153,12 @@ public class TaskStep {
     /** @param c 上下文快照 */
     public void setContextSnapshot(String c) { this.contextSnapshot = c; }
 
+    /** @return LLM 输出的详细设计方案 */
+    public String getDesignDetail() { return designDetail; }
+
+    /** @param d 详细设计方案 */
+    public void setDesignDetail(String d) { this.designDetail = d; }
+
     /** @param t 上下文重新聚合时间 */
     public void setReaggregatedAt(LocalDateTime t) { this.reaggregatedAt = t; }
 
@@ -165,4 +182,10 @@ public class TaskStep {
 
     /** @param a 认领人 ID */
     public void setAssigneeId(Long a) { this.assigneeId = a; }
+
+    /** @return 乐观锁版本号 */
+    public int getVersion() { return version; }
+
+    /** @param version 乐观锁版本号 */
+    public void setVersion(int version) { this.version = version; }
 }

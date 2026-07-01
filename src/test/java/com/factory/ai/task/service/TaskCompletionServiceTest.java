@@ -3,7 +3,7 @@ package com.factory.ai.task.service;
 import com.factory.ai.gitnexus.GitNexusClient;
 import com.factory.ai.gitnexus.dto.*;
 import com.factory.ai.task.domain.*;
-import com.factory.ai.task.repository.*;
+import com.factory.ai.task.mapper.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -11,17 +11,19 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@Transactional
 class TaskCompletionServiceTest {
 
     @Autowired TaskCompletionService svc;
-    @Autowired TaskStepRepository steps;
-    @Autowired TaskDependencyRepository deps;
-    @Autowired TaskRepository tasks;
+    @Autowired TaskStepMapper steps;
+    @Autowired TaskDependencyMapper deps;
+    @Autowired TaskMapper tasks;
     @Autowired TaskDecompositionService decomp;
 
     @TestConfiguration
@@ -43,34 +45,39 @@ class TaskCompletionServiceTest {
         }
         @Bean @Primary LlmGateway llm() {
             return (req, ctx) -> List.of(
-                new LlmGateway.TaskDraft("A", "ServiceA", "do A"),
-                new LlmGateway.TaskDraft("B", "ServiceB", "do B")
+                new LlmGateway.TaskDraft("A", "ServiceA", "产出物: ServiceA.doA()\n签名: public void doA()\n实现: 执行 A 逻辑"),
+                new LlmGateway.TaskDraft("B", "ServiceB", "产出物: ServiceB.doB()\n签名: public void doB()\n实现: 执行 B 逻辑\n依赖: ServiceA")
             );
         }
     }
 
     @Test
     void completingADecrementsBandUnlocksToReady() {
-        var task = tasks.save(new Task("req", 1L));
+        var task = new Task("req", 1L);
+        tasks.insert(task);
+
         var a = new TaskStep(task.getId(), "A", "ServiceA");
         a.setStatus(TaskStepStatus.IN_PROGRESS);
         a.setGeneratedPrompt("old A prompt");
-        a = steps.save(a);
+        steps.insert(a);
 
         var b = new TaskStep(task.getId(), "B", "ServiceB");
         b.setStatus(TaskStepStatus.PENDING);
         b.setDependsOnCount(1);
         b.setGeneratedPrompt("old B prompt (stale)");
-        b = steps.save(b);
+        steps.insert(b);
 
-        deps.save(new TaskDependency(a.getId(), b.getId()));
+        deps.insert(new TaskDependency(a.getId(), b.getId()));
 
         boolean ok = svc.complete(a.getId(), 1L, "repo");
 
         assertTrue(ok);
-        assertEquals(TaskStepStatus.DONE, steps.findById(a.getId()).orElseThrow().getStatus());
+        var aAfter = steps.selectById(a.getId());
+        assertNotNull(aAfter);
+        assertEquals(TaskStepStatus.DONE, aAfter.getStatus());
 
-        var bAfter = steps.findById(b.getId()).orElseThrow();
+        var bAfter = steps.selectById(b.getId());
+        assertNotNull(bAfter);
         assertEquals(TaskStepStatus.READY, bAfter.getStatus());
         assertEquals(0, bAfter.getDependsOnCount());
         assertTrue(bAfter.getGeneratedPrompt().contains("fresh code for ServiceB"),
@@ -80,10 +87,12 @@ class TaskCompletionServiceTest {
 
     @Test
     void completeFailsWhenDetectChangesSaysNoTouch() {
-        var task = tasks.save(new Task("req", 1L));
+        var task = new Task("req", 1L);
+        tasks.insert(task);
+
         var a = new TaskStep(task.getId(), "A", "ServiceA");
         a.setStatus(TaskStepStatus.IN_PROGRESS);
-        steps.save(a);
+        steps.insert(a);
 
         boolean ok = svc.complete(a.getId(), 1L, "repo");
         assertTrue(ok);

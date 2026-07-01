@@ -3,7 +3,7 @@ package com.factory.ai.task.service;
 import com.factory.ai.gitnexus.GitNexusClient;
 import com.factory.ai.gitnexus.dto.*;
 import com.factory.ai.task.domain.*;
-import com.factory.ai.task.repository.*;
+import com.factory.ai.task.mapper.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -11,16 +11,18 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@Transactional
 class TaskDecompositionServiceTest {
 
     @Autowired TaskDecompositionService svc;
-    @Autowired TaskStepRepository steps;
-    @Autowired TaskDependencyRepository deps;
+    @Autowired TaskStepMapper steps;
+    @Autowired TaskDependencyMapper deps;
 
     @TestConfiguration
     static class TestBeans {
@@ -47,8 +49,8 @@ class TaskDecompositionServiceTest {
         }
         @Bean @Primary LlmGateway llm() {
             return (req, ctx) -> List.of(
-                new LlmGateway.TaskDraft("加getVipLevel", "UserService", "在UserService加getVipLevel方法"),
-                new LlmGateway.TaskDraft("加HTTP接口", "UserController", "在UserController加VIP查询接口")
+                new LlmGateway.TaskDraft("加getVipLevel", "UserService", "产出物: UserService.getVipLevel(userId)\n签名: public VipLevel getVipLevel(Long userId)\n实现: 1. 查 user 表获取 level 字段 2. 映射为 VipLevel 枚举返回\n依赖: UserRepository.findById()"),
+                new LlmGateway.TaskDraft("加HTTP接口", "UserController", "产出物: UserController.getVipLevel()\n签名: @GetMapping(\"/vip/{userId}\") public VipLevel getVipLevel(@PathVariable Long userId)\n实现: 调用 UserService.getVipLevel() 返回结果\n依赖: UserService.getVipLevel()")
             );
         }
     }
@@ -57,16 +59,16 @@ class TaskDecompositionServiceTest {
     void decomposeCreatesStepsWithDependencyAndContext() {
         Long taskId = svc.decompose("增加VIP等级查询", "repo", 1L);
 
-        var taskSteps = steps.findByTaskIdAndStatus(taskId, TaskStepStatus.READY);
+        var taskSteps = steps.findByTaskIdAndStatus(taskId, TaskStepStatus.READY.name());
         assertEquals(1, taskSteps.size(), "UserService should be READY (no deps)");
         var a = taskSteps.get(0);
         assertEquals("UserService", a.getTargetSymbol());
         assertNotNull(a.getGeneratedPrompt());
 
-        var pending = steps.findByTaskIdAndStatus(taskId, TaskStepStatus.PENDING);
+        var pending = steps.findByTaskIdAndStatus(taskId, TaskStepStatus.PENDING.name());
         assertEquals(1, pending.size(), "UserController should be PENDING (depends on A)");
         assertEquals(1, pending.get(0).getDependsOnCount());
 
-        assertEquals(1, deps.findAll().size(), "one dependency edge A→B");
+        assertEquals(1, deps.selectList(null).size(), "one dependency edge A→B");
     }
 }

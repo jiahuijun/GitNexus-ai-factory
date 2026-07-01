@@ -1,7 +1,7 @@
 package com.factory.ai.task.service;
 
 import com.factory.ai.task.domain.*;
-import com.factory.ai.task.repository.*;
+import com.factory.ai.task.mapper.*;
 import com.factory.ai.gitnexus.GitNexusClient;
 import com.factory.ai.gitnexus.dto.*;
 import org.junit.jupiter.api.Test;
@@ -11,16 +11,18 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@Transactional
 class TaskClaimServiceTest {
 
     @Autowired TaskClaimService svc;
-    @Autowired TaskStepRepository steps;
-    @Autowired TaskRepository tasks;
+    @Autowired TaskStepMapper steps;
+    @Autowired TaskMapper tasks;
 
     @TestConfiguration
     static class TestBeans {
@@ -43,11 +45,13 @@ class TaskClaimServiceTest {
 
     @Test
     void claimReadyReturnsStepWithPrompt() {
-        var task = tasks.save(new Task("req", 1L));
+        var task = new Task("req", 1L);
+        tasks.insert(task);
+
         var step = new TaskStep(task.getId(), "do X", "Sym");
         step.setStatus(TaskStepStatus.READY);
         step.setGeneratedPrompt("PROMPT");
-        steps.save(step);
+        steps.insert(step);
 
         var claimed = svc.claim(step.getId(), 7L);
         assertNotNull(claimed);
@@ -57,10 +61,12 @@ class TaskClaimServiceTest {
 
     @Test
     void claimNonReadyReturnsNull() {
-        var task = tasks.save(new Task("req", 1L));
+        var task = new Task("req", 1L);
+        tasks.insert(task);
+
         var step = new TaskStep(task.getId(), "do X", "Sym");
         step.setStatus(TaskStepStatus.PENDING);
-        steps.save(step);
+        steps.insert(step);
 
         assertNull(svc.claim(step.getId(), 7L));
     }

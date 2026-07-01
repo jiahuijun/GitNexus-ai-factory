@@ -113,7 +113,8 @@ public class SpringAiMcpGitNexusClient implements GitNexusClient {
             sym.path("filePath").asText(""),
             optInt(sym, "startLine"),
             optInt(sym, "endLine"),
-            root.path("sourceContent").asText(""),
+            // GitNexus 将源码放在 symbol.content 内（include_content=true 时返回）
+            sym.path("content").asText(""),
             // incoming.calls 是直接调用此符号的引用列表。
             parseSymbolRefList(root.path("incoming").path("calls")),
             // outgoing.has_method 是此符号持有的方法（类→方法关系）。
