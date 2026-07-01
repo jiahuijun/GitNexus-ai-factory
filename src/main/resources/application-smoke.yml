@@ -23,12 +23,13 @@ spring:
       - org.springframework.ai.mcp.client.autoconfigure.SseWebFluxTransportAutoConfiguration
   ai:
     openai:
-      # Spring AI 会自动追加 /v1/chat/completions，base-url 不要带 /v1
-      base-url: http://localhost:11434
-      api-key: dummy
+      # DashScope OpenAI 兼容模式。Spring AI 会自动追加 /v1/chat/completions，
+      # 所以 base-url 不能带 /v1（否则变成 /v1/v1/chat/completions）。
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
+      api-key: sk-f234c5a60453430d8edbbd2bd8d3d9fc
       chat:
         options:
-          model: qwen2.5:14b
+          model: qwen3.6-35b-a3b
           temperature: 0.2
 
 factory:

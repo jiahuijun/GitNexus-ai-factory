@@ -22,12 +22,13 @@ spring:
   # Spring AI OpenAI 配置
   ai:
     openai:
-      # Spring AI 会自动追加 /v1/chat/completions，base-url 不要带 /v1
-      base-url: ${LLM_BASE_URL:http://localhost:11434}
-      api-key: ${LLM_API_KEY:dummy}
+      # DashScope OpenAI 兼容模式。Spring AI 会自动追加 /v1/chat/completions，
+      # 所以 base-url 不能带 /v1（否则变成 /v1/v1/chat/completions）。
+      base-url: ${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
+      api-key: ${LLM_API_KEY:sk-f234c5a60453430d8edbbd2bd8d3d9fc}
       chat:
         options:
-          model: ${LLM_MODEL:qwen2.5:14b}
+          model: ${LLM_MODEL:qwen2.5-14b-instruct}
           temperature: 0.2
 
 gitnexus:
