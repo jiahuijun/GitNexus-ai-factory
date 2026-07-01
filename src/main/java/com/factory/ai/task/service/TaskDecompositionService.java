@@ -40,6 +40,13 @@ public class TaskDecompositionService {
         // 3. LLM 拆解
         List<LlmGateway.TaskDraft> drafts = llm.splitTasks(requirement, queryResult);
 
+        // 3.5 空草稿 → DECOMPOSING_FAILED，不建 step
+        if (drafts.isEmpty()) {
+            task.setStatus(TaskStatus.DECOMPOSING_FAILED);
+            taskRepo.save(task);
+            return task.getId();
+        }
+
         // 4. 建步骤实体（先存，拿到 ID）
         List<TaskStep> stepList = new ArrayList<>();
         for (var d : drafts) {

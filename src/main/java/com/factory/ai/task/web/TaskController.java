@@ -1,9 +1,12 @@
 package com.factory.ai.task.web;
 
+import com.factory.ai.gitnexus.GitNexusException;
+import com.factory.ai.task.service.LlmException;
 import com.factory.ai.task.service.TaskClaimService;
 import com.factory.ai.task.service.TaskCompletionService;
 import com.factory.ai.task.service.TaskDecompositionService;
 import com.factory.ai.task.web.dto.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -42,5 +45,11 @@ public class TaskController {
         } catch (NoSuchElementException e) {
             return ResponseEntity.ok(false);
         }
+    }
+
+    @ExceptionHandler({GitNexusException.class, LlmException.class})
+    public ResponseEntity<ErrorResponse> onUpstreamFailure(RuntimeException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(new ErrorResponse("UPSTREAM_UNAVAILABLE", e.getMessage()));
     }
 }

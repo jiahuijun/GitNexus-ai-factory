@@ -10,7 +10,30 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  # Spring AI 配置
+  ai:
+    mcp:
+      client:
+        # Spring AI 1.0.0 GA MCP client uses SSE transport (no http/streamable-http key exists).
+        # Verified via McpSseClientProperties.CONFIG_PREFIX = "spring.ai.mcp.client.sse".
+        # The connections map key is an arbitrary client name (here: "gitnexus").
+        sse:
+          connections:
+            gitnexus:
+              url: ${GITNEXUS_MCP_URL:http://localhost:4747/api/mcp}
+    openai:
+      base-url: ${LLM_BASE_URL:http://localhost:11434/v1}
+      api-key: ${LLM_API_KEY:dummy}
+      chat:
+        options:
+          model: ${LLM_MODEL:qwen2.5:14b}
+          temperature: 0.2
 
 gitnexus:
   base-url: http://localhost:4747
   default-repo: GitNexus
+
+factory:
+  clients:
+    real:
+      enabled: true

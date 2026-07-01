@@ -1,0 +1,35 @@
+# src/main/resources/application-smoke.yml
+# smoke 测试用:连真实 GitNexus + 真实 LLM,不连 DB(用 H2 内存)
+spring:
+  datasource:
+    url: jdbc:h2:mem:smoketest;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  flyway:
+    enabled: false
+  # 不排除 auto-config — smoke 测试要连真实端点
+  ai:
+    mcp:
+      client:
+        # Spring AI 1.0.0 GA: SSE transport. Key verified from
+        # McpSseClientProperties.CONFIG_PREFIX = "spring.ai.mcp.client.sse".
+        sse:
+          connections:
+            gitnexus:
+              url: http://localhost:4747/api/mcp
+    openai:
+      base-url: http://localhost:11434/v1
+      api-key: dummy
+      chat:
+        options:
+          model: qwen2.5:14b
+          temperature: 0.2
+
+factory:
+  clients:
+    real:
+      enabled: true
