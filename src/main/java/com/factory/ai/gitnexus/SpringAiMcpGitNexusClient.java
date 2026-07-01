@@ -58,9 +58,10 @@ public class SpringAiMcpGitNexusClient implements GitNexusClient {
     /**
      * {@inheritDoc}
      *
-     * <p>实现细节：MCP {@code query} 工具原生返回按执行流（process）分组的结构，
-     * 本方法将其扁平化为统一的符号列表，同时收集执行流的 {@code heuristicLabel}
-     * 作为名称集合，便于上层 AI 按“链路主题”做二次检索。
+     * <p>实现细节：MCP {@code query} 工具返回 {@code definitions[]}（扁平符号列表）、
+     * {@code process_symbols[]}（按执行流分组的符号）和 {@code processes[]}（含
+     * {@code heuristicLabel}）。本方法从 {@code definitions[]} 解析所有符号，
+     * 从 {@code processes[]} 收集执行流名称，供上层 AI 按链路主题做二次检索。
      */
     @Override
     public QueryResult query(String query, String repo) {
@@ -69,18 +70,19 @@ public class SpringAiMcpGitNexusClient implements GitNexusClient {
         JsonNode root = callTool("query", Map.of(
             "query", query, "repo", repo, "limit", 5, "max_symbols", 10
         ));
-        // MCP query 返回按 process 分组；这里扁平化为 symbols + process 名称列表。
+        // MCP query 返回 definitions[]（扁平符号列表）+ process_symbols[]（按执行流分组）+ processes[]（含 heuristicLabel）。
+        // definitions[] 是权威符号集合，processes[].heuristicLabel 提供执行流名称。
         List<SymbolRef> symbols = new ArrayList<>();
         List<String> processNames = new ArrayList<>();
+        // 从 definitions[] 解析所有符号（使用 id 字段，非 uid）。
+        for (JsonNode sym : root.path("definitions")) {
+            symbols.add(parseSymbolRef(sym));
+        }
+        // 从 processes[] 收集执行流语义标签。
         for (JsonNode proc : root.path("processes")) {
-            // heuristicLabel 是执行流的语义化标签（如 "UserLogin"），缺失则跳过避免空名污染。
             String label = proc.path("heuristicLabel").asText("");
             if (!label.isEmpty()) {
                 processNames.add(label);
-            }
-            // 每个执行流下的 symbols 数组逐项映射为 SymbolRef。
-            for (JsonNode sym : proc.path("symbols")) {
-                symbols.add(parseSymbolRef(sym));
             }
         }
         return new QueryResult(symbols, processNames);
@@ -89,8 +91,10 @@ public class SpringAiMcpGitNexusClient implements GitNexusClient {
     /**
      * {@inheritDoc}
      *
-     * <p>实现细节：MCP {@code context} 工具返回单符号的完整上下文，本方法逐字段映射，
-     * 对缺失字段做安全回退（如 name 缺失时回退为调用方传入的 symbolName，避免空名）。
+     * <p>实现细节：MCP {@code context} 工具返回单符号的完整上下文，符号本体嵌套在
+     * {@code root.symbol} 下，调用引用按方向分组在 {@code root.incoming.calls} 和
+     * {@code root.outgoing.has_method} 中。本方法逐字段映射，对缺失字段做安全回退
+     * （如 name 缺失时回退为调用方传入的 symbolName，避免空名）。
      */
     @Override
     public SymbolContext context(String symbolName, String repo) {
@@ -98,18 +102,22 @@ public class SpringAiMcpGitNexusClient implements GitNexusClient {
         JsonNode root = callTool("context", Map.of(
             "name", symbolName, "repo", repo, "include_content", true
         ));
+        // MCP context 将符号本体嵌套在 root.symbol 下，调用引用按方向分组在 root.incoming/outgoing 下。
+        JsonNode sym = root.path("symbol");
         return new SymbolContext(
-            root.path("uid").asText(""),
+            sym.path("uid").asText(""),
             // name 字段缺失时回退为传入 symbolName：保证 DTO 至少有可读标识，
             // 即便服务端消歧失败也能让上层日志可追踪。
-            root.path("name").asText(symbolName),
-            root.path("kind").asText(""),
-            root.path("filePath").asText(""),
-            optInt(root, "startLine"),
-            optInt(root, "endLine"),
+            sym.path("name").asText(symbolName),
+            sym.path("kind").asText(""),
+            sym.path("filePath").asText(""),
+            optInt(sym, "startLine"),
+            optInt(sym, "endLine"),
             root.path("sourceContent").asText(""),
-            parseSymbolRefList(root.path("incomingCalls")),
-            parseSymbolRefList(root.path("outgoingMethods"))
+            // incoming.calls 是直接调用此符号的引用列表。
+            parseSymbolRefList(root.path("incoming").path("calls")),
+            // outgoing.has_method 是此符号持有的方法（类→方法关系）。
+            parseSymbolRefList(root.path("outgoing").path("has_method"))
         );
     }
 
@@ -118,7 +126,8 @@ public class SpringAiMcpGitNexusClient implements GitNexusClient {
      *
      * <p>实现细节：MCP {@code impact} 工具返回的 {@code byDepth} 是以深度字符串
      * （"1"/"2"/"3"）为键的 JSON 对象，本方法将其转为 {@code Map<Integer,...>}，
-     * 便于上层按深度数值取用。
+     * 便于上层按深度数值取用。{@code target} 字段在 MCP 响应中是对象
+     * （含 {@code id/name/type/filePath}），本方法取其 {@code name} 作为标识。
      */
     @Override
     public ImpactResult impact(String target, String direction, String repo) {
@@ -135,10 +144,14 @@ public class SpringAiMcpGitNexusClient implements GitNexusClient {
             int depth = Integer.parseInt(e.getKey());
             byDepth.put(depth, parseSymbolRefList(e.getValue()));
         });
+        // MCP impact 的 target 是对象 {id,name,type,filePath} 而非纯字符串；
+        // 取其 name 字段作为 target 标识，缺失时回退为传入的 target 参数。
+        JsonNode targetNode = root.path("target");
+        String targetName = targetNode.isObject()
+            ? targetNode.path("name").asText(target)
+            : targetNode.asText(target);
         return new ImpactResult(
-            // target/direction/risk 缺失时回退为传入值或 "UNKNOWN"，
-            // 保证 DTO 字段非空，避免上层 NPE。
-            root.path("target").asText(target),
+            targetName,
             root.path("direction").asText(direction),
             root.path("risk").asText("UNKNOWN"),
             byDepth
@@ -155,7 +168,8 @@ public class SpringAiMcpGitNexusClient implements GitNexusClient {
     public boolean detectChanges(String repo) {
         // scope=unstaged：只关注工作区未暂存改动，对应"提交前自检"场景。
         JsonNode root = callTool("detect_changes", Map.of("repo", repo, "scope", "unstaged"));
-        JsonNode changed = root.path("changedSymbols");
+        // MCP 返回 changed_symbols（snake_case），非 changedSymbols。
+        JsonNode changed = root.path("changed_symbols");
         // isArray() 双重判断：既排除 null/missing，又排除非数组结构（如对象）。
         return changed.isArray() && !changed.isEmpty();
     }
@@ -219,14 +233,21 @@ public class SpringAiMcpGitNexusClient implements GitNexusClient {
      * 将单个 JSON 节点映射为 {@link SymbolRef}。
      *
      * <p>对所有字段使用 {@code path().asText("")} / {@link #optInt} 做安全导航，
-     * 即便服务端漏返字段也只会得到空串/null 而非 NPE。
+     * 即便服务端漏返字段也只会得到空串/null 而非 NPE。符号唯一标识兼容两种字段名：
+     * {@code uid}（context 响应）和 {@code id}（query/impact 响应）。
      *
      * @param node 符号的 JSON 节点
      * @return 填充好的 SymbolRef
      */
     private SymbolRef parseSymbolRef(JsonNode node) {
+        // query/impact 响应使用 "id" 作为符号唯一标识；context 响应使用 "uid"。
+        // 优先读 uid，缺失则读 id，两者皆无则回退空串，兼容两种 MCP 响应格式。
+        String uid = node.path("uid").asText("");
+        if (uid.isEmpty()) {
+            uid = node.path("id").asText("");
+        }
         return new SymbolRef(
-            node.path("uid").asText(""),
+            uid,
             node.path("name").asText(""),
             node.path("filePath").asText(""),
             optInt(node, "startLine"),

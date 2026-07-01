@@ -30,13 +30,15 @@ class SpringAiMcpGitNexusClientTest {
 
     @Test
     void queryMapsMcpTextToQueryResult() {
-        // MCP query tool returns processes grouped; client flattens into symbols + process names.
+        // MCP query returns definitions[] (flat symbol list with "id") + processes[] (with heuristicLabel).
         String json = """
             {
               "processes": [
-                {"heuristicLabel":"UserAuth","symbols":[
-                  {"uid":"Class:p:UserService","name":"UserService","filePath":"src/UserService.java","kind":"Class"}
-                ]}
+                {"heuristicLabel":"UserAuth"}
+              ],
+              "process_symbols": [],
+              "definitions": [
+                {"id":"Class:p:UserService","name":"UserService","filePath":"src/UserService.java","kind":"Class","startLine":1,"endLine":100,"module":"auth"}
               ]
             }
             """;
@@ -49,19 +51,30 @@ class SpringAiMcpGitNexusClientTest {
         assertEquals(1, result.symbols().size());
         assertEquals("UserService", result.symbols().get(0).name());
         assertEquals("src/UserService.java", result.symbols().get(0).filePath());
+        assertEquals("Class:p:UserService", result.symbols().get(0).uid());
         assertEquals(1, result.processNames().size());
         assertTrue(result.processNames().contains("UserAuth"));
     }
 
     @Test
     void contextMapsMcpTextToSymbolContext() {
+        // MCP context nests symbol under root.symbol, calls under root.incoming.calls, methods under root.outgoing.has_method.
         String json = """
             {
-              "uid":"uid1","name":"UserService","kind":"Class",
-              "filePath":"src/UserService.java","startLine":10,"endLine":100,
+              "status":"found",
+              "symbol":{
+                "uid":"uid1","name":"UserService","kind":"Class",
+                "filePath":"src/UserService.java","startLine":10,"endLine":100
+              },
               "sourceContent":"public class UserService {}",
-              "incomingCalls":[{"uid":"Class:p:Ctrl","name":"Ctrl","filePath":"src/Ctrl.java","startLine":1,"endLine":50}],
-              "outgoingMethods":[]
+              "incoming":{
+                "calls":[{"uid":"Class:p:Ctrl","name":"Ctrl","filePath":"src/Ctrl.java","startLine":1,"endLine":50}],
+                "imports":[]
+              },
+              "outgoing":{
+                "has_method":[]
+              },
+              "processes":[]
             }
             """;
         when(mcpClient.callTool(any(CallToolRequest.class)))
@@ -80,10 +93,17 @@ class SpringAiMcpGitNexusClientTest {
 
     @Test
     void impactMapsByDepthToMap() {
+        // MCP impact returns target as object {id,name,type,filePath}, byDepth items use "id" not "uid".
         String json = """
             {
-              "target":"UserService","direction":"upstream","risk":"LOW",
-              "byDepth":{"1":[{"uid":"Class:p:Ctrl","name":"Ctrl","filePath":"src/Ctrl.java","startLine":1,"endLine":50}]}
+              "target":{"id":"Class:p:UserService","name":"UserService","type":"Class","filePath":"src/UserService.java"},
+              "direction":"upstream",
+              "impactedCount":1,
+              "risk":"LOW",
+              "summary":{},
+              "affected_processes":[],
+              "affected_modules":[],
+              "byDepth":{"1":[{"depth":1,"id":"Class:p:Ctrl","name":"Ctrl","filePath":"src/Ctrl.java","startLine":1,"endLine":50,"relationType":"IMPORTS","confidence":1.0}]}
             }
             """;
         when(mcpClient.callTool(any(CallToolRequest.class)))
@@ -100,8 +120,9 @@ class SpringAiMcpGitNexusClientTest {
 
     @Test
     void detectChangesReturnsTrueWhenChangedSymbolsNonEmpty() {
+        // MCP detect_changes returns changed_symbols (snake_case), not changedSymbols.
         String json = """
-            {"changedSymbols":[{"uid":"Class:p:UserService","name":"UserService"}],"risk":"LOW"}
+            {"summary":{},"changed_symbols":[{"id":"Class:p:UserService","name":"UserService"}],"affected_processes":[]}
             """;
         when(mcpClient.callTool(any(CallToolRequest.class)))
             .thenReturn(callToolResultWithText(json));
@@ -113,7 +134,7 @@ class SpringAiMcpGitNexusClientTest {
     @Test
     void detectChangesReturnsFalseWhenChangedSymbolsEmpty() {
         String json = """
-            {"changedSymbols":[],"risk":"LOW"}
+            {"summary":{},"changed_symbols":[],"affected_processes":[]}
             """;
         when(mcpClient.callTool(any(CallToolRequest.class)))
             .thenReturn(callToolResultWithText(json));

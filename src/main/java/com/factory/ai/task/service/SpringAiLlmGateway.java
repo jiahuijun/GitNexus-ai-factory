@@ -70,6 +70,9 @@ public class SpringAiLlmGateway implements LlmGateway {
                 .user(promptBuilder.buildUserMessage(requirement, context))
                 .call()
                 .entity(new ParameterizedTypeReference<List<TaskDraft>>() {});
+        } catch (LlmException e) {
+            // 已经是 LlmException 则原样上抛，避免双重包装丢失原始信息。
+            throw e;
         } catch (Exception e) {
             // 包装为非受检异常，触发上游事务回滚，符合"不降级"原则
             throw new LlmException("LLM splitTasks failed for requirement: " + requirement, e);
