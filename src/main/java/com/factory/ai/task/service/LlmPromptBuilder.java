@@ -7,9 +7,37 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * LLM 提示词构建器，为 {@link LlmGateway} 组装系统提示词与用户消息。
+ *
+ * <p>在拆解流水线中，由 {@link SpringAiLlmGateway} 在调用大模型前调用本类，
+ * 将需求文本 + GitNexus 摸底结果拼装成结构化的用户消息，
+ * 配合静态的 {@link #SYSTEM_PROMPT} 约束 LLM 的输出格式与拆解原则。</p>
+ *
+ * <p>{@link #SYSTEM_PROMPT} 规定了三条核心规则：
+ * <ol>
+ *   <li>输出 JSON 数组，字段含 stepName / targetSymbol / instruction</li>
+ *   <li>targetSymbol 必须来自摸底结果，不得凭空发明；摸底为空 → 输出空数组</li>
+ *   <li>只输出 JSON，不附加任何 markdown 标记或解释文字</li>
+ * </ol>
+ * 这保证下游可直接反序列化为 {@code List<TaskDraft>}。</p>
+ *
+ * @see SpringAiLlmGateway
+ * @see LlmGateway.TaskDraft
+ */
 @Component
 public class LlmPromptBuilder {
 
+    /**
+     * 系统提示词，约束 LLM 作为"任务拆解器"的角色、输入格式、输出规则与拆解原则。
+     *
+     * <p>关键规则：
+     * <ul>
+     *   <li>输出纯 JSON 数组，无 markdown 代码块标记，便于直接反序列化</li>
+     *   <li>targetSymbol 必须从摸底结果符号列表中选取</li>
+     *   <li>摸底结果为空时输出空数组 {@code []}</li>
+     * </ul>
+     */
     public static final String SYSTEM_PROMPT = """
         你是 AI Factory 的任务拆解器。你的职责:基于产品需求 + GitNexus 代码摸底结果,
         把需求拆成若干个可独立执行的开发任务草稿。
@@ -32,10 +60,23 @@ public class LlmPromptBuilder {
         4. 只输出 JSON 数组,不要任何其他文字、解释、markdown 代码块标记。
         """;
 
+    /**
+     * 组装用户消息，将需求文本与摸底结果格式化后嵌入提示模板。
+     *
+     * <p>消息分三段：需求文本、相关符号列表（{@code name @ filePath}）、
+     * 执行流名称（逗号分隔）。摸底为空时以"(无)"占位，
+     * 提示 LLM 据此输出空数组。</p>
+     *
+     * @param requirement 管理员提交的产品需求文本
+     * @param queryResult GitNexus {@code query()} 返回的摸底结果，提供符号列表与执行流名称
+     * @return 组装好的用户消息字符串，供 {@code ChatClient.user()} 使用
+     */
     public String buildUserMessage(String requirement, QueryResult queryResult) {
+        // 将符号列表格式化为 "- name @ filePath" 多行文本，便于 LLM 识别
         String symbols = queryResult.symbols().stream()
             .map(s -> "- " + s.name() + " @ " + s.filePath())
             .collect(Collectors.joining("\n"));
+        // 执行流名称用逗号拼接，空则占位
         String processes = String.join(", ", queryResult.processNames());
 
         return """
