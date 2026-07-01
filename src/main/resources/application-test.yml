@@ -9,3 +9,22 @@ spring:
     open-in-view: false
   flyway:
     enabled: false
+  autoconfigure:
+    exclude:
+      # Spring AI MCP client — must not try to connect to localhost:4747 in tests
+      - org.springframework.ai.mcp.client.autoconfigure.McpClientAutoConfiguration
+      - org.springframework.ai.mcp.client.autoconfigure.McpToolCallbackAutoConfiguration
+      - org.springframework.ai.mcp.client.autoconfigure.StdioTransportAutoConfiguration
+      - org.springframework.ai.mcp.client.autoconfigure.SseHttpClientTransportAutoConfiguration
+      - org.springframework.ai.mcp.client.autoconfigure.SseWebFluxTransportAutoConfiguration
+      # Spring AI OpenAI — all sub-configs require an API key and would fail to load
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+factory:
+  clients:
+    real:
+      enabled: false
