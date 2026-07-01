@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/ai_factory?useSSL=false&serverTimezone=UTC
+    url: jdbc:mysql://localhost:3306/ai_factory?useSSL=false&serverTimezone=Asia/Shanghai
     username: root
-    password:
+    password: root123
   jpa:
     hibernate:
       ddl-auto: validate
@@ -28,7 +28,7 @@ spring:
       api-key: ${LLM_API_KEY:sk-f234c5a60453430d8edbbd2bd8d3d9fc}
       chat:
         options:
-          model: ${LLM_MODEL:qwen2.5-14b-instruct}
+          model: ${LLM_MODEL:qwen3.6-35b-a3b}
           temperature: 0.2
 
 gitnexus:
