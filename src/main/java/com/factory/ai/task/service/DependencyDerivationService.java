@@ -69,9 +69,10 @@ public class DependencyDerivationService {
             // 拉 A 的上游影响面：改 S_A 会被谁直接依赖
             ImpactResult impact = gitNexus.impact(a.getTargetSymbol(), "upstream", repo);
             // 候选集：收集 impact 里每个 ref 的 name + 从 uid 解析出的所属类名
+            // normalizeSymbolName 剥 .java 后缀，使 File 级引用（name="Name.java"）能匹配类级 targetSymbol
             Set<String> upstreamNames = new HashSet<>();
             for (SymbolRef ref : impact.directDependents()) {
-                upstreamNames.add(ref.name());
+                upstreamNames.add(normalizeSymbolName(ref.name()));
                 upstreamNames.add(extractClassName(ref.uid()));  // 所属类，用于匹配类级符号
             }
             // 遍历其他任务 B，命中候选集则连边 A→B
@@ -96,8 +97,10 @@ public class DependencyDerivationService {
      * <ul>
      *   <li>类级：{@code "Class:path/to/File.java:ClassName"}</li>
      *   <li>方法级：{@code "Method:...:ClassName:method"}</li>
+     *   <li>文件级：{@code "File:path/to/ClassName.java"}</li>
      * </ul>
-     * 取冒号分隔后最后一段作为类名；解析失败时原样返回 uid。</p>
+     * 取冒号分隔后最后一段作为类名；File 级 uid 取路径最后一段并剥 .java 后缀；
+     * 解析失败时原样返回 uid。</p>
      *
      * @param uid GitNexus SymbolRef 的 uid 字符串
      * @return 解析出的类名；无法解析时返回原 uid
@@ -105,7 +108,36 @@ public class DependencyDerivationService {
     private String extractClassName(String uid) {
         // uid 形如 "Class:path/to/File.java:ClassName" 或 "Method:...:ClassName:method"
         String[] parts = uid.split(":");
-        return parts.length >= 3 ? parts[parts.length - 1] : uid;
+        if (parts.length >= 3) {
+            return parts[parts.length - 1];
+        }
+        // File 级 uid: "File:path/to/ClassName.java" → "ClassName"
+        if (parts.length == 2 && "File".equals(parts[0])) {
+            return normalizeSymbolName(parts[1]);
+        }
+        return uid;
+    }
+
+    /**
+     * 将符号名标准化为纯类名形式。
+     *
+     * <p>处理两种情况：
+     * <ul>
+     *   <li>路径形式（如 {@code "path/to/Name.java"}）→ 取最后一段</li>
+     *   <li>带 .java 后缀（如 {@code "Name.java"}）→ 剥后缀</li>
+     * </ul>
+     * 使 File 级引用的 name（如 {@code "BinaryLogClientStatistics.java"}）能匹配
+     * targetSymbol（如 {@code "BinaryLogClientStatistics"}）。</p>
+     *
+     * @param name 原始符号名或路径
+     * @return 标准化后的纯类名
+     */
+    private String normalizeSymbolName(String name) {
+        if (name == null || name.isEmpty()) return name;
+        int lastSlash = name.lastIndexOf('/');
+        if (lastSlash >= 0) name = name.substring(lastSlash + 1);
+        if (name.endsWith(".java")) name = name.substring(0, name.length() - 5);
+        return name;
     }
 
     /**

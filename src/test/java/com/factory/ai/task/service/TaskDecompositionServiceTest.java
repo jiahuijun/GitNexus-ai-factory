@@ -39,7 +39,12 @@ class TaskDecompositionServiceTest {
                 }
                 public ImpactResult impact(String t, String d, String r) {
                     if (t.equals("UserService")) {
-                        var caller = new SymbolRef("Class:p:UserController", "UserController", "p", 1, 50);
+                        // 模拟真实 GitNexus 行为：impact 返回 File 级引用（name 带 .java 后缀）
+                        var caller = new SymbolRef(
+                            "File:src/main/java/com/factory/ai/UserController.java",
+                            "UserController.java",
+                            "src/main/java/com/factory/ai/UserController.java",
+                            1, 50);
                         return new ImpactResult(t, d, "LOW", java.util.Map.of(1, List.of(caller)));
                     }
                     return new ImpactResult(t, d, "LOW", java.util.Map.of());
