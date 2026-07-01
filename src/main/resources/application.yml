@@ -10,6 +10,8 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 1
   # 排除 Spring AI MCP SSE 自动配置——GitNexus 使用 Streamable HTTP 协议,
   # 由 GitNexusMcpClientConfiguration 提供自定义 McpSyncClient bean。
   autoconfigure:
