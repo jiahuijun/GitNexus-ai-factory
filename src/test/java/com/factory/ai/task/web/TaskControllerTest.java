@@ -164,4 +164,60 @@ class TaskControllerTest {
             .andExpect(status().isOk())
             .andExpect(content().string("true"));
     }
+
+    // --- 输入校验测试 ---
+
+    @Test
+    void decomposeRejectsBlankRequirement() throws Exception {
+        mvc.perform(post("/tasks/decompose")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"requirement\":\"\",\"repo\":\"r\",\"adminId\":1}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void decomposeRejectsNullAdminId() throws Exception {
+        mvc.perform(post("/tasks/decompose")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"requirement\":\"test\",\"repo\":\"r\",\"adminId\":null}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void decomposeRejectsNegativeAdminId() throws Exception {
+        mvc.perform(post("/tasks/decompose")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"requirement\":\"test\",\"repo\":\"r\",\"adminId\":-1}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void claimRejectsNullUserId() throws Exception {
+        mvc.perform(post("/tasks/1/claim")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\":null}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void completeRejectsBlankRepo() throws Exception {
+        mvc.perform(post("/tasks/1/complete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\":1,\"repo\":\"\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void executeRejectsZeroUserId() throws Exception {
+        mvc.perform(post("/tasks/1/execute")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\":0,\"repo\":\"r\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
 }

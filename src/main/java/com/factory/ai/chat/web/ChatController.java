@@ -5,8 +5,11 @@ import com.factory.ai.chat.web.dto.*;
 import com.factory.ai.gitnexus.GitNexusException;
 import com.factory.ai.task.service.LlmException;
 import com.factory.ai.task.web.dto.ErrorResponse;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.NoSuchElementException;
@@ -41,7 +44,7 @@ public class ChatController {
      * @return 会话 ID + 第一个澄清问题
      */
     @PostMapping
-    public ResponseEntity<StartSessionResponse> start(@RequestBody StartSessionRequest req) {
+    public ResponseEntity<StartSessionResponse> start(@Valid @RequestBody StartSessionRequest req) {
         StartSessionResponse resp = service.start(req.requirement(), req.repo(), req.adminId());
         return ResponseEntity.ok(resp);
     }
@@ -54,7 +57,7 @@ public class ChatController {
      * @return LLM 回复 + ready 标志
      */
     @PostMapping("/{id}/messages")
-    public ResponseEntity<MessageResponse> sendMessage(@PathVariable String id, @RequestBody SendMessageRequest req) {
+    public ResponseEntity<MessageResponse> sendMessage(@PathVariable String id, @Valid @RequestBody SendMessageRequest req) {
         try {
             MessageResponse resp = service.sendMessage(id, req.text());
             return ResponseEntity.ok(resp);
@@ -86,5 +89,19 @@ public class ChatController {
     public ResponseEntity<ErrorResponse> onUpstreamFailure(RuntimeException e) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
             .body(new ErrorResponse("UPSTREAM_UNAVAILABLE", e.getMessage()));
+    }
+
+    /**
+     * 输入校验失败 → 400 Bad Request。
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> onValidationFailure(MethodArgumentNotValidException e) {
+        StringBuilder sb = new StringBuilder();
+        for (FieldError fe : e.getBindingResult().getFieldErrors()) {
+            if (sb.length() > 0) sb.append("; ");
+            sb.append(fe.getField()).append(": ").append(fe.getDefaultMessage());
+        }
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(new ErrorResponse("VALIDATION_FAILED", sb.toString()));
     }
 }

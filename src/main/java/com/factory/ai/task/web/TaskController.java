@@ -13,8 +13,11 @@ import com.factory.ai.task.service.TaskCompletionService;
 import com.factory.ai.task.service.TaskDecompositionService;
 import com.factory.ai.task.service.TaskExecutionService;
 import com.factory.ai.task.web.dto.*;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -61,7 +64,7 @@ public class TaskController {
      * @return 200 OK，响应体为新创建任务的 id
      */
     @PostMapping("/decompose")
-    public ResponseEntity<Long> decompose(@RequestBody DecomposeRequest req) {
+    public ResponseEntity<Long> decompose(@Valid @RequestBody DecomposeRequest req) {
         return ResponseEntity.ok(decomp.decompose(req.requirement(), req.repo(), req.adminId()));
     }
 
@@ -78,7 +81,7 @@ public class TaskController {
      * @return 200 OK + {@link TaskStepResponse}（成功领取）；409 Conflict（无可领取步骤）
      */
     @PostMapping("/{id}/claim")
-    public ResponseEntity<TaskStepResponse> claim(@PathVariable Long id, @RequestBody ClaimRequest req) {
+    public ResponseEntity<TaskStepResponse> claim(@PathVariable Long id, @Valid @RequestBody ClaimRequest req) {
         var step = claim.claim(id, req.userId());
         // step 为 null 表示步骤已被其他 worker 抢占或任务无可领取项 -> 409 冲突
         return step != null ? ResponseEntity.ok(TaskStepResponse.from(step))
@@ -96,7 +99,7 @@ public class TaskController {
      * @return 200 OK + {@code true}（成功完成）；200 OK + {@code false}（步骤不存在，幂等返回）
      */
     @PostMapping("/{id}/complete")
-    public ResponseEntity<Boolean> complete(@PathVariable Long id, @RequestBody CompleteRequest req) {
+    public ResponseEntity<Boolean> complete(@PathVariable Long id, @Valid @RequestBody CompleteRequest req) {
         try {
             boolean ok = complete.complete(id, req.userId(), req.repo());
             return ResponseEntity.ok(ok);
@@ -122,7 +125,7 @@ public class TaskController {
      * @return 200 OK + true（成功）；200 OK + false（认领失败，幂等返回）
      */
     @PostMapping("/{id}/execute")
-    public ResponseEntity<Boolean> execute(@PathVariable Long id, @RequestBody ExecuteRequest req) {
+    public ResponseEntity<Boolean> execute(@PathVariable Long id, @Valid @RequestBody ExecuteRequest req) {
         try {
             boolean ok = execution.execute(id, req.userId(), req.repo());
             return ResponseEntity.ok(ok);
@@ -231,5 +234,21 @@ public class TaskController {
     public ResponseEntity<ErrorResponse> onUpstreamFailure(RuntimeException e) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
             .body(new ErrorResponse("UPSTREAM_UNAVAILABLE", e.getMessage()));
+    }
+
+    /**
+     * 输入校验失败 → 400 Bad Request。
+     *
+     * <p>当 @Valid 校验不通过时，返回结构化错误信息，列出所有违规字段及原因。</p>
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> onValidationFailure(MethodArgumentNotValidException e) {
+        StringBuilder sb = new StringBuilder();
+        for (FieldError fe : e.getBindingResult().getFieldErrors()) {
+            if (sb.length() > 0) sb.append("; ");
+            sb.append(fe.getField()).append(": ").append(fe.getDefaultMessage());
+        }
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(new ErrorResponse("VALIDATION_FAILED", sb.toString()));
     }
 }
