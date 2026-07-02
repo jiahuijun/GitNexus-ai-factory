@@ -56,6 +56,19 @@ PENDING ──(deps→0)──▶ READY ──(claim)──▶ IN_PROGRESS ─�
 4. **Complete** — `detectChanges()` verifies disk changes → mark `DONE` → unlock successors with re-aggregated context
 5. **Failure rollback** — `detectChanges` fails → `revertClaim()` → step back to `READY` (retryable)
 
+## Why AI Factory
+
+Unlike generic "LLM → code" tools, AI Factory grounds every decision in **real code structure** and orchestrates a **multi-agent pipeline** rather than a single prompt:
+
+- **Code knowledge graph grounding** — Task target symbols, dependency edges, and prompt context all come from GitNexus's symbol-level code analysis. No LLM hallucination — the LLM can only pick symbols that actually exist in your codebase.
+- **Conversational requirement clarification** — Not a one-shot "submit → pray" button. The LLM asks focused clarifying questions grounded in real code symbols (e.g., *"I see `BinaryLogClient` already has `keepAlive`, should the heartbeat reuse it?"*) before decomposing.
+- **Automatic DAG derivation** — Step dependencies are auto-derived from code impact analysis, not manually specified. If step A's symbol is called by step B's symbol, the DAG edge is created automatically — with cycle detection.
+- **Context re-aggregation** — When a predecessor step completes, successors automatically get fresh `context()` + `impact()` calls. The prompt reflects the *current* state of the codebase, not a stale snapshot from decomposition time.
+- **Full-auto AI worker closed loop** — Claim → LLM generates code → write to file → verify disk changes → mark DONE → unlock successors. Zero human intervention needed for the happy path.
+- **No-degradation architecture** — Upstream failures (GitNexus, LLM) throw → transaction rollback → HTTP 503. No silent empty data, no fallback paths, no half-baked results in the database.
+- **Multi-worker collaboration** — CAS-based atomic claiming prevents double-claiming across concurrent AI instances. `GET /tasks/steps/claimed?userId=` lets workers resume their tasks across sessions — natural support for multi-agent parallel development.
+- **Cost-efficient model flexibility** — Because each step carries a fully-assembled prompt (with source code, callers, design detail — all pre-fetched by GitNexus), the LLM only needs to *write code*, not *understand the codebase*. This means you can use cheap or free local models (e.g., Qwen-7B, Llama 3, Ollama) for step execution, while reserving expensive models for the decomposition and clarification stages where reasoning matters most. One premium model call for decomposition, N cheap model calls for execution.
+
 ## Key Features
 
 - **DAG-based task decomposition** — Dependencies derived from real code structure (GitNexus impact analysis), not LLM guesses

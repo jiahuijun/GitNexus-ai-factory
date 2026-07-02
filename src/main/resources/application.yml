@@ -21,12 +21,11 @@ spring:
   ai:
     openai:
       # DashScope OpenAI 兼容模式。Spring AI 会自动追加 /v1/chat/completions，
-      # 所以 base-url 不能带 /v1（否则变成 /v1/v1/chat/completions）。
-      base-url: ${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
-      api-key: ${LLM_API_KEY:sk-f234c5a60453430d8edbbd2bd8d3d9fc}
+      base-url: ${LLM_BASE_URL:your-base-url}
+      api-key: ${LLM_API_KEY:your-api-key}
       chat:
         options:
-          model: ${LLM_MODEL:qwen3.6-35b-a3b}
+          model: ${LLM_MODEL:your-model}
           temperature: 0.2
 
 gitnexus:
