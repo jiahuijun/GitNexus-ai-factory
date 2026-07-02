@@ -51,4 +51,24 @@ public interface TaskStepMapper extends BaseMapper<TaskStep> {
     @Select("SELECT * FROM task_step WHERE task_id = #{taskId} AND status = #{status}")
     List<TaskStep> findByTaskIdAndStatus(@Param("taskId") Long taskId,
                                          @Param("status") String status);
+
+    @Select("SELECT * FROM task_step WHERE task_id = #{taskId} ORDER BY id")
+    List<TaskStep> findByTaskId(@Param("taskId") Long taskId);
+
+    /**
+     * 回退认领：将 IN_PROGRESS 的步骤回退为 READY，清除认领人。
+     *
+     * <p>用于执行失败场景（detectChanges 未通过等），允许后续重试。
+     * CAS 语义：仅当步骤仍为 IN_PROGRESS 时才回退，防止误操作已完成的步骤。</p>
+     *
+     * @param stepId         要回退的步骤 ID
+     * @param expectedStatus 期望的当前状态（IN_PROGRESS）
+     * @param newStatus      回退后的状态（READY）
+     * @return 受影响行数，1 表示回退成功，0 表示状态已变
+     */
+    @Update("UPDATE task_step SET status = #{newStatus}, assignee_id = NULL, version = version + 1 " +
+            "WHERE id = #{stepId} AND status = #{expectedStatus}")
+    int revertClaim(@Param("stepId") Long stepId,
+                    @Param("expectedStatus") String expectedStatus,
+                    @Param("newStatus") String newStatus);
 }

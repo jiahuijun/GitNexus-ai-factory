@@ -35,6 +35,19 @@ public interface LlmGateway {
     List<TaskDraft> splitTasks(String requirement, QueryResult context);
 
     /**
+     * 调用 LLM 执行步骤提示词，返回生成的完整文件内容。
+     *
+     * <p>在 AI Worker 执行流程中使用：将 {@link TaskStep#getGeneratedPrompt()}
+     * 发送给 LLM，LLM 基于其中的目标符号、当前源码、调用方、设计详情，
+     * 输出修改后的完整文件内容。Worker 将其写入目标文件后调用 complete。</p>
+     *
+     * @param prompt 步骤的 generated_prompt，含完整上下文与设计指令
+     * @return LLM 生成的完整文件内容（纯文本，不含 markdown 围栏）
+     * @throws LlmException 当 LLM 调用或网络出错时抛出（不降级）
+     */
+    String executeStep(String prompt);
+
+    /**
      * 任务草稿记录，由 LLM 输出的单条拆解结果。
      *
      * @param stepName      动词短语，描述该任务做什么（如 "加getVipLevel方法"）

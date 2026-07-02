@@ -55,4 +55,19 @@ public class TaskClaimService {
         if (step == null) throw new NoSuchElementException("Step not found: " + stepId);
         return step;
     }
+
+    /**
+     * 回退认领：将 IN_PROGRESS 的步骤回退为 READY，清除认领人。
+     *
+     * <p>用于执行失败场景（如 detectChanges 未通过），使步骤可被重新认领。
+     * CAS 语义保证不会误操作已 DONE 的步骤。</p>
+     *
+     * @param stepId 要回退的步骤 id
+     */
+    @Transactional
+    public void revertClaim(Long stepId) {
+        stepMapper.revertClaim(stepId,
+                TaskStepStatus.IN_PROGRESS.name(),
+                TaskStepStatus.READY.name());
+    }
 }

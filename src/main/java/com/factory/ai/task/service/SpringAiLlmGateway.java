@@ -29,6 +29,15 @@ import java.util.List;
 @ConditionalOnProperty(name = "factory.clients.real.enabled", havingValue = "true")
 public class SpringAiLlmGateway implements LlmGateway {
 
+    /** 执行步骤时的系统提示词：约束 LLM 只输出完整文件内容，不带 markdown 围栏或解释。 */
+    static final String EXECUTE_SYSTEM_PROMPT =
+        "你是一名资深工程师，根据给定的步骤提示词修改源代码。\n" +
+        "要求：\n" +
+        "1. 只输出修改后的完整文件内容，不要任何解释、说明或前后文。\n" +
+        "2. 不要使用 markdown 代码围栏（```）包裹输出。\n" +
+        "3. 保持文件原有结构和风格，仅按设计详情要求进行修改。\n" +
+        "4. 输出必须是可直接写入文件的有效源代码。";
+
     private final ChatClient chatClient;
     private final LlmPromptBuilder promptBuilder;
 
@@ -76,6 +85,30 @@ public class SpringAiLlmGateway implements LlmGateway {
         } catch (Exception e) {
             // 包装为非受检异常，触发上游事务回滚，符合"不降级"原则
             throw new LlmException("LLM splitTasks failed for requirement: " + requirement, e);
+        }
+    }
+
+    /**
+     * 调用 LLM 执行步骤提示词，返回生成的完整文件内容。
+     *
+     * <p>使用 {@link #EXECUTE_SYSTEM_PROMPT} 约束 LLM 只输出纯源代码，
+     * 不带 markdown 围栏或解释文本。调用方（{@link TaskExecutionService}）
+     * 将返回内容直接写入目标文件。</p>
+     *
+     * @param prompt 步骤的 generated_prompt，含目标符号、当前源码、设计详情等完整上下文
+     * @return LLM 生成的完整文件内容（纯文本）
+     * @throws LlmException 当 LLM 调用或网络出错时抛出（不降级）
+     */
+    @Override
+    public String executeStep(String prompt) {
+        try {
+            return chatClient.prompt()
+                .system(EXECUTE_SYSTEM_PROMPT)
+                .user(prompt)
+                .call()
+                .content();
+        } catch (Exception e) {
+            throw new LlmException("LLM executeStep failed", e);
         }
     }
 }

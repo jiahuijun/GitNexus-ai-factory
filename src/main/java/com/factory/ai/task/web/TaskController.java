@@ -1,15 +1,23 @@
 package com.factory.ai.task.web;
 
 import com.factory.ai.gitnexus.GitNexusException;
+import com.factory.ai.task.domain.Task;
+import com.factory.ai.task.domain.TaskDependency;
+import com.factory.ai.task.domain.TaskStep;
+import com.factory.ai.task.mapper.TaskDependencyMapper;
+import com.factory.ai.task.mapper.TaskMapper;
+import com.factory.ai.task.mapper.TaskStepMapper;
 import com.factory.ai.task.service.LlmException;
 import com.factory.ai.task.service.TaskClaimService;
 import com.factory.ai.task.service.TaskCompletionService;
 import com.factory.ai.task.service.TaskDecompositionService;
+import com.factory.ai.task.service.TaskExecutionService;
 import com.factory.ai.task.web.dto.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.NoSuchElementException;
 
 /**
@@ -32,17 +40,18 @@ public class TaskController {
     private final TaskDecompositionService decomp;
     private final TaskClaimService claim;
     private final TaskCompletionService complete;
+    private final TaskExecutionService execution;
+    private final TaskMapper taskMapper;
+    private final TaskStepMapper stepMapper;
+    private final TaskDependencyMapper depMapper;
 
-    /**
-     * 构造函数注入三个核心服务。
-     *
-     * @param decomp   任务分解服务，负责将需求拆解为可执行的步骤序列
-     * @param claim    任务领取服务，负责原子地分配下一个待执行步骤
-     * @param complete 任务完成服务，负责标记步骤完成并触发后继步骤的再聚合
-     */
     public TaskController(TaskDecompositionService decomp, TaskClaimService claim,
-            TaskCompletionService complete) {
+            TaskCompletionService complete, TaskExecutionService execution,
+            TaskMapper taskMapper, TaskStepMapper stepMapper,
+            TaskDependencyMapper depMapper) {
         this.decomp = decomp; this.claim = claim; this.complete = complete;
+        this.execution = execution;
+        this.taskMapper = taskMapper; this.stepMapper = stepMapper; this.depMapper = depMapper;
     }
 
     /**
@@ -92,9 +101,88 @@ public class TaskController {
             boolean ok = complete.complete(id, req.userId(), req.repo());
             return ResponseEntity.ok(ok);
         } catch (NoSuchElementException e) {
-            // 步骤不存在视为已完成（幂等），返回 false 而非 4xx/5xx
             return ResponseEntity.ok(false);
         }
+    }
+
+    /**
+     * 全自动执行一个任务步骤（认领 → 调 LLM 生成代码 → 写文件 → 完成）。
+     *
+     * <p>worker 调用此端点后，系统自动完成整个执行闭环：
+     * <ol>
+     *   <li>原子认领 READY 步骤</li>
+     *   <li>调 LLM 基于 generated_prompt 生成代码</li>
+     *   <li>将代码写入目标文件</li>
+     *   <li>触发 detectChanges 验证 + 标记 DONE + 解锁后继</li>
+     * </ol>
+     * 若步骤不存在或非 READY，返回 200 + false（幂等）。</p>
+     *
+     * @param id  路径参数，目标任务步骤 id
+     * @param req 执行请求体，包含 worker 的 userId 与仓库名
+     * @return 200 OK + true（成功）；200 OK + false（认领失败，幂等返回）
+     */
+    @PostMapping("/{id}/execute")
+    public ResponseEntity<Boolean> execute(@PathVariable Long id, @RequestBody ExecuteRequest req) {
+        try {
+            boolean ok = execution.execute(id, req.userId(), req.repo());
+            return ResponseEntity.ok(ok);
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.ok(false);
+        }
+    }
+
+    // --- GET 查询端点 ---
+
+    @GetMapping
+    public ResponseEntity<List<TaskResponse>> list(@RequestParam(required = false) String status) {
+        List<Task> tasks = status != null
+            ? taskMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Task>()
+                .eq(Task::getStatus, com.factory.ai.task.domain.TaskStatus.valueOf(status)))
+            : taskMapper.selectList(null);
+        return ResponseEntity.ok(tasks.stream().map(TaskResponse::from).toList());
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<TaskResponse> getTask(@PathVariable Long id) {
+        Task t = taskMapper.selectById(id);
+        return t != null ? ResponseEntity.ok(TaskResponse.from(t))
+                         : ResponseEntity.notFound().build();
+    }
+
+    @GetMapping("/{id}/steps")
+    public ResponseEntity<List<TaskStepSummary>> getSteps(@PathVariable Long id) {
+        if (taskMapper.selectById(id) == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(
+            stepMapper.findByTaskId(id).stream().map(TaskStepSummary::from).toList());
+    }
+
+    @GetMapping("/{id}/dependencies")
+    public ResponseEntity<List<TaskDependencyResponse>> getDependencies(@PathVariable Long id) {
+        if (taskMapper.selectById(id) == null) return ResponseEntity.notFound().build();
+        var steps = stepMapper.findByTaskId(id);
+        var stepNameMap = new java.util.HashMap<Long, String>();
+        for (var s : steps) stepNameMap.put(s.getId(), s.getStepName());
+        var deps = depMapper.findByTaskId(id);
+        return ResponseEntity.ok(deps.stream().map(d -> new TaskDependencyResponse(
+            d.getFromStepId(), d.getToStepId(),
+            stepNameMap.get(d.getFromStepId()), stepNameMap.get(d.getToStepId())
+        )).toList());
+    }
+
+    /**
+     * 获取单个步骤的完整详情（含 generatedPrompt、designDetail 等所有字段）。
+     *
+     * <p>与 {@link #getSteps} 不同，此端点返回步骤的全部字段，
+     * 供前端在不认领的情况下查看提示词、设计详情等内容。</p>
+     *
+     * @param stepId 步骤 ID（路径参数，注意是 stepId 而非 taskId）
+     * @return 200 OK + TaskStep 完整 JSON；404 Not Found（步骤不存在）
+     */
+    @GetMapping("/steps/{stepId}")
+    public ResponseEntity<TaskStep> getStepDetail(@PathVariable Long stepId) {
+        TaskStep step = stepMapper.selectById(stepId);
+        return step != null ? ResponseEntity.ok(step)
+                             : ResponseEntity.notFound().build();
     }
 
     /**

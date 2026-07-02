@@ -44,10 +44,15 @@ class TaskCompletionServiceTest {
             };
         }
         @Bean @Primary LlmGateway llm() {
-            return (req, ctx) -> List.of(
-                new LlmGateway.TaskDraft("A", "ServiceA", "产出物: ServiceA.doA()\n签名: public void doA()\n实现: 执行 A 逻辑"),
-                new LlmGateway.TaskDraft("B", "ServiceB", "产出物: ServiceB.doB()\n签名: public void doB()\n实现: 执行 B 逻辑\n依赖: ServiceA")
-            );
+            return new LlmGateway() {
+                @Override public List<TaskDraft> splitTasks(String req, QueryResult ctx) {
+                    return List.of(
+                        new LlmGateway.TaskDraft("A", "ServiceA", "产出物: ServiceA.doA()\n签名: public void doA()\n实现: 执行 A 逻辑"),
+                        new LlmGateway.TaskDraft("B", "ServiceB", "产出物: ServiceB.doB()\n签名: public void doB()\n实现: 执行 B 逻辑\n依赖: ServiceA")
+                    );
+                }
+                @Override public String executeStep(String prompt) { return ""; }
+            };
         }
     }
 
@@ -96,5 +101,31 @@ class TaskCompletionServiceTest {
 
         boolean ok = svc.complete(a.getId(), 1L, "repo");
         assertTrue(ok);
+    }
+
+    @Test
+    void completingAllStepsMarksTaskDone() {
+        var task = new Task("req", 1L);
+        tasks.insert(task);
+
+        var a = new TaskStep(task.getId(), "A", "ServiceA");
+        a.setStatus(TaskStepStatus.IN_PROGRESS);
+        a.setGeneratedPrompt("prompt A");
+        steps.insert(a);
+
+        var b = new TaskStep(task.getId(), "B", "ServiceB");
+        b.setStatus(TaskStepStatus.IN_PROGRESS);
+        b.setGeneratedPrompt("prompt B");
+        steps.insert(b);
+
+        // 完成 A → task 应为 PARTIAL（B 未完成）
+        svc.complete(a.getId(), 1L, "repo");
+        var taskAfterA = tasks.selectById(task.getId());
+        assertEquals(TaskStatus.PARTIAL, taskAfterA.getStatus());
+
+        // 完成 B → task 应为 DONE（全部完成）
+        svc.complete(b.getId(), 1L, "repo");
+        var taskAfterB = tasks.selectById(task.getId());
+        assertEquals(TaskStatus.DONE, taskAfterB.getStatus());
     }
 }

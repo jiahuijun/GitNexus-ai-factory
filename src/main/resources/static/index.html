@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Factory — 任务管理控制台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
+        .nav { background: #1a1a2e; padding: 12px 24px; display: flex; gap: 24px; align-items: center; }
+        .nav h1 { color: #e94560; font-size: 18px; margin-right: auto; }
+        .nav a { color: #a8a8b3; text-decoration: none; font-size: 14px; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+        .nav a:hover, .nav a.active { background: #e94560; color: #fff; }
+        .container { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+        .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eee; font-size: 14px; }
+        th { background: #f8f8f8; font-weight: 600; color: #555; }
+        .badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .badge-READY { background: #d4edda; color: #155724; }
+        .badge-IN_PROGRESS { background: #fff3cd; color: #856404; }
+        .badge-DONE { background: #d1ecf1; color: #0c5460; }
+        .badge-PENDING { background: #f8d7da; color: #721c24; }
+        .badge-PARTIAL { background: #fff3cd; color: #856404; }
+        .badge-DECOMPOSING { background: #e2e3e5; color: #383d41; }
+        .badge-DECOMPOSING_FAILED { background: #f8d7da; color: #721c24; }
+        .badge-CANCELLED { background: #e2e3e5; color: #383d41; }
+        .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; }
+        .btn-primary { background: #e94560; color: #fff; }
+        .btn-primary:hover { background: #c81e45; }
+        .btn-secondary { background: #6c757d; color: #fff; }
+        .btn-success { background: #28a745; color: #fff; }
+        .btn-warning { background: #ffc107; color: #333; }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;
+        }
+        .form-group textarea { min-height: 100px; resize: vertical; font-family: monospace; }
+        .alert { padding: 12px 16px; border-radius: 4px; margin-bottom: 16px; font-size: 14px; }
+        .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .alert-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .hidden { display: none; }
+        .clickable { cursor: pointer; }
+        .clickable:hover { background: #f0f0f0; }
+        .step-prompt { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; padding: 12px;
+            font-family: "Consolas", monospace; font-size: 13px; white-space: pre-wrap; max-height: 400px;
+            overflow-y: auto; margin-top: 8px; }
+        .dag-svg { width: 100%; min-height: 200px; background: #fafafa; border: 1px solid #eee; border-radius: 4px; }
+        .status-filter { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+        .status-filter button { padding: 4px 12px; border: 1px solid #ddd; background: #fff; border-radius: 12px; font-size: 12px; cursor: pointer; }
+        .status-filter button.active { background: #e94560; color: #fff; border-color: #e94560; }
+        .actions-cell { white-space: nowrap; }
+        .actions-cell button { margin-right: 4px; }
+        .loading { text-align: center; padding: 40px; color: #999; }
+        .json-view { background: #f8f9fa; border-radius: 4px; padding: 12px; font-family: monospace; font-size: 13px;
+            white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <nav class="nav">
+        <h1>AI Factory</h1>
+        <a id="nav-tasks" class="active" onclick="showView('tasks')">任务列表</a>
+        <a id="nav-decompose" onclick="showView('decompose')">提交需求</a>
+        <a id="nav-back" class="hidden" onclick="showView('tasks')">← 返回列表</a>
+    </nav>
+
+    <div class="container">
+        <!-- 任务列表视图 -->
+        <div id="view-tasks">
+            <div class="card">
+                <div class="status-filter">
+                    <button class="active" onclick="filterStatus('')">全部</button>
+                    <button onclick="filterStatus('READY')">就绪</button>
+                    <button onclick="filterStatus('PARTIAL')">部分完成</button>
+                    <button onclick="filterStatus('DONE')">已完成</button>
+                    <button onclick="filterStatus('DECOMPOSING')">分解中</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr><th>ID</th><th>需求</th><th>状态</th><th>创建人</th><th>操作</th></tr>
+                    </thead>
+                    <tbody id="task-list-body">
+                        <tr><td colspan="5" class="loading">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 提交需求视图 -->
+        <div id="view-decompose" class="hidden">
+            <div class="card">
+                <h2 style="margin-bottom: 20px;">提交需求 — 拆解为任务步骤</h2>
+                <div id="decompose-alert"></div>
+                <div class="form-group">
+                    <label>产品需求（自然语言描述）</label>
+                    <textarea id="decompose-requirement" placeholder="例如：给 BinaryLogClient 添加断线重连指数退避策略，可配置最大重试次数和初始退避间隔"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>目标仓库（GitNexus 中索引的仓库名）</label>
+                    <input type="text" id="decompose-repo" placeholder="例如：mysql-binlog-connector-java" value="mysql-binlog-connector-java">
+                </div>
+                <div class="form-group">
+                    <label>管理员 ID</label>
+                    <input type="number" id="decompose-adminId" value="1" min="1">
+                </div>
+                <button class="btn btn-primary" onclick="submitDecompose()">提交拆解</button>
+            </div>
+        </div>
+
+        <!-- 任务详情视图 -->
+        <div id="view-detail" class="hidden">
+            <div id="detail-content"></div>
+        </div>
+    </div>
+
+    <script>
+        const API = '';
+        let currentStatusFilter = '';
+
+        // === 视图切换 ===
+        function showView(view) {
+            ['tasks', 'decompose', 'detail'].forEach(v => {
+                document.getElementById('view-' + v).classList.add('hidden');
+            });
+            document.getElementById('view-' + view).classList.remove('hidden');
+            document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+            if (view === 'tasks') {
+                document.getElementById('nav-tasks').classList.add('active');
+                document.getElementById('nav-back').classList.add('hidden');
+                loadTasks();
+            } else if (view === 'decompose') {
+                document.getElementById('nav-decompose').classList.add('active');
+            } else {
+                document.getElementById('nav-back').classList.remove('hidden');
+            }
+        }
+
+        // === 任务列表 ===
+        async function loadTasks() {
+            const url = currentStatusFilter ? `/tasks?status=${currentStatusFilter}` : '/tasks';
+            try {
+                const res = await fetch(API + url);
+                const tasks = await res.json();
+                const body = document.getElementById('task-list-body');
+                if (tasks.length === 0) {
+                    body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;">暂无任务</td></tr>';
+                    return;
+                }
+                body.innerHTML = tasks.map(t => `
+                    <tr class="clickable" onclick="showDetail(${t.id})">
+                        <td>${t.id}</td>
+                        <td style="max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.requirement)}</td>
+                        <td><span class="badge badge-${t.status}">${statusLabel(t.status)}</span></td>
+                        <td>${t.createdBy}</td>
+                        <td><button class="btn btn-primary btn-sm" onclick="event.stopPropagation();showDetail(${t.id})">详情</button></td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                document.getElementById('task-list-body').innerHTML = `<tr><td colspan="5" style="color:red;">加载失败: ${esc(e.message)}</td></tr>`;
+            }
+        }
+
+        function filterStatus(status) {
+            currentStatusFilter = status;
+            document.querySelectorAll('.status-filter button').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            loadTasks();
+        }
+
+        // === 任务详情 ===
+        async function showDetail(taskId) {
+            showView('detail');
+            const container = document.getElementById('detail-content');
+            container.innerHTML = '<div class="card"><div class="loading">加载中...</div></div>';
+            try {
+                const [taskRes, stepsRes, depsRes] = await Promise.all([
+                    fetch(`${API}/tasks/${taskId}`),
+                    fetch(`${API}/tasks/${taskId}/steps`),
+                    fetch(`${API}/tasks/${taskId}/dependencies`)
+                ]);
+                const task = await taskRes.json();
+                const steps = await stepsRes.json();
+                const deps = await depsRes.json();
+
+                let html = `
+                    <div class="card">
+                        <h2 style="margin-bottom:16px;">任务 #${task.id}</h2>
+                        <table>
+                            <tr><td style="width:100px;font-weight:600;">状态</td><td><span class="badge badge-${task.status}">${statusLabel(task.status)}</span></td></tr>
+                            <tr><td style="font-weight:600;">需求</td><td>${esc(task.requirement)}</td></tr>
+                            <tr><td style="font-weight:600;">创建人</td><td>${task.createdBy}</td></tr>
+                        </table>
+                    </div>
+                `;
+
+                // DAG 图
+                if (deps.length > 0) {
+                    html += `<div class="card"><h3 style="margin-bottom:12px;">DAG 依赖关系</h3>${renderDAG(steps, deps)}</div>`;
+                }
+
+                // Steps 表
+                html += `
+                    <div class="card">
+                        <h3 style="margin-bottom:12px;">步骤列表（${steps.length}）</h3>
+                        <table>
+                            <thead><tr><th>ID</th><th>步骤名</th><th>目标符号</th><th>状态</th><th>认领人</th><th>待解锁</th><th>操作</th></tr></thead>
+                            <tbody>
+                                ${steps.map(s => `
+                                    <tr>
+                                        <td>${s.id}</td>
+                                        <td>${esc(s.stepName)}</td>
+                                        <td style="font-family:monospace;font-size:13px;">${esc(s.targetSymbol)}</td>
+                                        <td><span class="badge badge-${s.status}">${statusLabel(s.status)}</span></td>
+                                        <td>${s.assigneeId || '-'}</td>
+                                        <td>${s.dependsOnCount}</td>
+                                        <td class="actions-cell">
+                                            ${renderStepActions(s)}
+                                        </td>
+                                    </tr>
+                                    <tr id="prompt-row-${s.id}" class="hidden">
+                                        <td colspan="7">
+                                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                                                <strong>生成提示词</strong>
+                                                <button class="btn btn-secondary btn-sm" onclick="togglePrompt(${s.id})">收起</button>
+                                            </div>
+                                            <div class="step-prompt" id="prompt-content-${s.id}">加载中...</div>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                container.innerHTML = html;
+            } catch (e) {
+                container.innerHTML = `<div class="card"><div class="alert alert-error">加载失败: ${esc(e.message)}</div></div>`;
+            }
+        }
+
+        function renderStepActions(s) {
+            let btns = '';
+            // 查看 Prompt 按钮
+            btns += `<button class="btn btn-secondary btn-sm" onclick="togglePrompt(${s.id})">提示词</button>`;
+            // Claim 按钮
+            if (s.status === 'READY') {
+                btns += `<button class="btn btn-warning btn-sm" onclick="claimStep(${s.id})">认领</button>`;
+            }
+            // Execute 按钮
+            if (s.status === 'READY') {
+                btns += `<button class="btn btn-success btn-sm" onclick="executeStep(${s.id})">执行</button>`;
+            }
+            // Complete 按钮
+            if (s.status === 'IN_PROGRESS') {
+                btns += `<button class="btn btn-primary btn-sm" onclick="completeStep(${s.id})">完成</button>`;
+            }
+            return btns;
+        }
+
+        async function togglePrompt(stepId) {
+            const row = document.getElementById(`prompt-row-${stepId}`);
+            if (row.classList.contains('hidden')) {
+                row.classList.remove('hidden');
+                const content = document.getElementById(`prompt-content-${stepId}`);
+                content.innerHTML = '<em style="color:#999;">加载中...</em>';
+                try {
+                    const res = await fetch(`${API}/tasks/steps/${stepId}`);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const step = await res.json();
+                    // 显示所有字段
+                    let html = '<div style="margin-bottom:12px;">';
+                    html += `<div style="margin:4px 0;"><strong>步骤 ID:</strong> ${step.id}</div>`;
+                    html += `<div style="margin:4px 0;"><strong>所属任务:</strong> ${step.taskId}</div>`;
+                    html += `<div style="margin:4px 0;"><strong>步骤名:</strong> ${esc(step.stepName)}</div>`;
+                    html += `<div style="margin:4px 0;"><strong>目标符号:</strong> ${esc(step.targetSymbol)}</div>`;
+                    html += `<div style="margin:4px 0;"><strong>目标文件:</strong> ${esc(step.targetFile)}</div>`;
+                    html += `<div style="margin:4px 0;"><strong>状态:</strong> <span class="badge badge-${step.status}">${statusLabel(step.status)}</span></div>`;
+                    html += `<div style="margin:4px 0;"><strong>认领人:</strong> ${step.assigneeId || '-'}</div>`;
+                    html += `<div style="margin:4px 0;"><strong>待解锁数:</strong> ${step.dependsOnCount}</div>`;
+                    html += `<div style="margin:4px 0;"><strong>需复核:</strong> ${step.needsReview}</div>`;
+                    if (step.reaggregatedAt) html += `<div style="margin:4px 0;"><strong>重新聚合时间:</strong> ${step.reaggregatedAt}</div>`;
+                    html += '</div>';
+
+                    if (step.designDetail) {
+                        html += `<div style="margin-top:12px;"><strong>设计详情</strong><div class="step-prompt" style="margin-top:4px;">${esc(step.designDetail)}</div></div>`;
+                    }
+                    if (step.generatedPrompt) {
+                        html += `<div style="margin-top:12px;"><strong>生成提示词</strong><div class="step-prompt" style="margin-top:4px;">${esc(step.generatedPrompt)}</div></div>`;
+                    }
+                    if (step.contextSnapshot) {
+                        html += `<div style="margin-top:12px;"><strong>上下文快照</strong><div class="step-prompt" style="margin-top:4px;">${esc(step.contextSnapshot)}</div></div>`;
+                    }
+                    content.innerHTML = html;
+                } catch (e) {
+                    content.innerHTML = `<em style="color:red;">加载失败: ${esc(e.message)}</em>`;
+                }
+            } else {
+                row.classList.add('hidden');
+            }
+        }
+
+        // === DAG 可视化 ===
+        function renderDAG(steps, deps) {
+            if (deps.length === 0) return '<p style="color:#999;">无依赖关系</p>';
+            const stepMap = {};
+            steps.forEach(s => stepMap[s.id] = s);
+            // 按依赖顺序排列
+            const lines = deps.map(d => {
+                const from = stepMap[d.fromStepId];
+                const to = stepMap[d.toStepId];
+                return `<div style="display:flex;align-items:center;gap:8px;margin:6px 0;">
+                    <span class="badge badge-${from?.status || ''}" style="min-width:200px;">${from ? esc(from.stepName) : d.fromStepId}</span>
+                    <span style="color:#e94560;font-size:18px;">→</span>
+                    <span class="badge badge-${to?.status || ''}" style="min-width:200px;">${to ? esc(to.stepName) : d.toStepId}</span>
+                </div>`;
+            }).join('');
+            return `<div>${lines}</div>`;
+        }
+
+        // === 提交需求 ===
+        async function submitDecompose() {
+            const requirement = document.getElementById('decompose-requirement').value.trim();
+            const repo = document.getElementById('decompose-repo').value.trim();
+            const adminId = parseInt(document.getElementById('decompose-adminId').value);
+            const alertDiv = document.getElementById('decompose-alert');
+
+            if (!requirement) {
+                alertDiv.innerHTML = '<div class="alert alert-error">请输入需求描述</div>';
+                return;
+            }
+            alertDiv.innerHTML = '<div class="alert alert-info">正在拆解...（可能需要 30-60 秒）</div>';
+
+            try {
+                const res = await fetch(`${API}/tasks/decompose`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ requirement, repo, adminId })
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.message || `HTTP ${res.status}`);
+                }
+                const taskId = await res.json();
+                alertDiv.innerHTML = `<div class="alert alert-success">拆解成功！任务 ID: ${taskId} <button class="btn btn-primary btn-sm" onclick="showDetail(${taskId})">查看详情</button></div>`;
+                document.getElementById('decompose-requirement').value = '';
+            } catch (e) {
+                alertDiv.innerHTML = `<div class="alert alert-error">拆解失败: ${esc(e.message)}</div>`;
+            }
+        }
+
+        // === 步骤操作 ===
+        async function claimStep(stepId) {
+            const userId = prompt('输入 userId:', '1');
+            if (!userId) return;
+            try {
+                const res = await fetch(`${API}/tasks/${stepId}/claim`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: parseInt(userId) })
+                });
+                if (res.status === 409) { alert('认领失败：步骤已被认领或非 READY 状态'); return; }
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const step = await res.json();
+                // 显示 prompt
+                alert(`认领成功！步骤: ${step.stepName}\n\n提示词已在浏览器控制台输出。`);
+                console.log('生成提示词:\n' + step.generatedPrompt);
+                // 刷新详情
+                const taskId = step.taskId;
+                showDetail(taskId);
+            } catch (e) {
+                alert('认领失败: ' + e.message);
+            }
+        }
+
+        async function executeStep(stepId) {
+            const repo = prompt('输入仓库名:', 'mysql-binlog-connector-java');
+            if (!repo) return;
+            if (!confirm(`确认自动执行步骤 ${stepId}？\n（LLM 将生成代码并写入文件，约 30-60 秒）`)) return;
+            // 显示进度
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '执行中...';
+            try {
+                const res = await fetch(`${API}/tasks/${stepId}/execute`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: 1, repo })
+                });
+                const result = await res.text();
+                if (result === 'true') {
+                    alert('执行成功！步骤已完成。');
+                } else {
+                    alert('执行返回 false（认领失败或 detectChanges 未通过）');
+                }
+                // 刷新详情
+                const detailContent = document.getElementById('detail-content');
+                // 从当前页面提取 taskId
+                const titleEl = detailContent.querySelector('h2');
+                if (titleEl) {
+                    const match = titleEl.textContent.match(/#(\d+)/);
+                    if (match) showDetail(parseInt(match[1]));
+                }
+            } catch (e) {
+                alert('执行失败: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '执行';
+            }
+        }
+
+        async function completeStep(stepId) {
+            const repo = prompt('输入仓库名:', 'mysql-binlog-connector-java');
+            if (!repo) return;
+            try {
+                const res = await fetch(`${API}/tasks/${stepId}/complete`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: 1, repo })
+                });
+                const result = await res.text();
+                if (result === 'true') {
+                    alert('完成成功！');
+                } else {
+                    alert('完成返回 false（步骤不存在或 detectChanges 未通过）');
+                }
+                const detailContent = document.getElementById('detail-content');
+                const titleEl = detailContent.querySelector('h2');
+                if (titleEl) {
+                    const match = titleEl.textContent.match(/#(\d+)/);
+                    if (match) showDetail(parseInt(match[1]));
+                }
+            } catch (e) {
+                alert('完成失败: ' + e.message);
+            }
+        }
+
+        // === 工具函数 ===
+        const STATUS_MAP = {
+            'READY': '就绪',
+            'IN_PROGRESS': '执行中',
+            'DONE': '已完成',
+            'PENDING': '等待中',
+            'PARTIAL': '部分完成',
+            'DECOMPOSING': '分解中',
+            'DECOMPOSING_FAILED': '分解失败',
+            'CANCELLED': '已取消'
+        };
+        function statusLabel(s) { return STATUS_MAP[s] || s; }
+
+        function esc(s) {
+            if (!s) return '';
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        // 初始加载
+        loadTasks();
+    </script>
+</body>
+</html>

@@ -27,4 +27,9 @@ public interface TaskDependencyMapper extends BaseMapper<TaskDependency> {
      */
     @Select("SELECT * FROM task_dependency WHERE from_step_id = #{fromStepId}")
     List<TaskDependency> findByFromStepId(@Param("fromStepId") Long fromStepId);
+
+    @Select("SELECT * FROM task_dependency WHERE from_step_id IN " +
+            "(SELECT id FROM task_step WHERE task_id = #{taskId}) OR to_step_id IN " +
+            "(SELECT id FROM task_step WHERE task_id = #{taskId})")
+    List<TaskDependency> findByTaskId(@Param("taskId") Long taskId);
 }

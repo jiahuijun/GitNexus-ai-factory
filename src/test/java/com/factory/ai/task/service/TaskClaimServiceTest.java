@@ -39,7 +39,10 @@ class TaskClaimServiceTest {
             };
         }
         @Bean @Primary LlmGateway llm() {
-            return (req, ctx) -> List.of();
+            return new LlmGateway() {
+                @Override public List<TaskDraft> splitTasks(String req, QueryResult ctx) { return List.of(); }
+                @Override public String executeStep(String prompt) { return ""; }
+            };
         }
     }
 

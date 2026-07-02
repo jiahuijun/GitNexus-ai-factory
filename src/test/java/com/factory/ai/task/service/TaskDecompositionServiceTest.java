@@ -53,10 +53,19 @@ class TaskDecompositionServiceTest {
             };
         }
         @Bean @Primary LlmGateway llm() {
-            return (req, ctx) -> List.of(
-                new LlmGateway.TaskDraft("加getVipLevel", "UserService", "产出物: UserService.getVipLevel(userId)\n签名: public VipLevel getVipLevel(Long userId)\n实现: 1. 查 user 表获取 level 字段 2. 映射为 VipLevel 枚举返回\n依赖: UserRepository.findById()"),
-                new LlmGateway.TaskDraft("加HTTP接口", "UserController", "产出物: UserController.getVipLevel()\n签名: @GetMapping(\"/vip/{userId}\") public VipLevel getVipLevel(@PathVariable Long userId)\n实现: 调用 UserService.getVipLevel() 返回结果\n依赖: UserService.getVipLevel()")
-            );
+            return new LlmGateway() {
+                @Override
+                public List<TaskDraft> splitTasks(String req, QueryResult ctx) {
+                    return List.of(
+                        new LlmGateway.TaskDraft("加getVipLevel", "UserService", "产出物: UserService.getVipLevel(userId)\n签名: public VipLevel getVipLevel(Long userId)\n实现: 1. 查 user 表获取 level 字段 2. 映射为 VipLevel 枚举返回\n依赖: UserRepository.findById()"),
+                        new LlmGateway.TaskDraft("加HTTP接口", "UserController", "产出物: UserController.getVipLevel()\n签名: @GetMapping(\"/vip/{userId}\") public VipLevel getVipLevel(@PathVariable Long userId)\n实现: 调用 UserService.getVipLevel() 返回结果\n依赖: UserService.getVipLevel()")
+                    );
+                }
+                @Override
+                public String executeStep(String prompt) {
+                    return "// generated code";
+                }
+            };
         }
     }
 

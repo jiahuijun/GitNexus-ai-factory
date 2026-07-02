@@ -38,6 +38,8 @@ factory:
   clients:
     real:
       enabled: true
+  worker:
+    repo-base-path: ${REPO_BASE_PATH:./repos}
 
 mybatis-plus:
   configuration:
