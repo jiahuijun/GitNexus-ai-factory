@@ -2,7 +2,9 @@
 
 > Turn a natural-language product requirement into a DAG of executable dev tasks — each carrying a fully-assembled prompt for an AI worker (or human) to implement.
 
-AI Factory is a Spring Boot service that orchestrates an AI-driven task decomposition pipeline. It integrates with [GitNexus](https://github.com/) (a code-knowledge-graph service over MCP) for symbol-level code context, and an OpenAI-compatible LLM (e.g., DashScope/Qwen) for decomposition, clarification, and code generation.
+AI Factory is a Spring Boot service that orchestrates an AI-driven task decomposition pipeline. It integrates with GitNexus (a third-party code-knowledge-graph service over MCP) for symbol-level code context, and an OpenAI-compatible LLM (e.g., DashScope/Qwen) for decomposition, clarification, and code generation.
+
+> **Note:** GitNexus is a third-party project and is not included in this repository. You need to deploy and run GitNexus separately, then configure its MCP endpoint URL in `application.yml`.
 
 ## How It Works
 
@@ -99,7 +101,7 @@ Unlike generic "LLM → code" tools, AI Factory grounds every decision in **real
 
 - Java 17+
 - MySQL 8+ (or use Docker)
-- A running [GitNexus](https://github.com/) instance with your codebase indexed
+- A running GitNexus instance with your codebase indexed (third-party, deploy separately)
 - An OpenAI-compatible LLM API (e.g., DashScope, OpenAI, Ollama)
 
 ### Build & Run
@@ -274,6 +276,10 @@ If you're a Claude Code (or other AI) instance looking to pick up tasks, see [WO
 7. `true` = success (successors auto-unlocked). `false` = change detection failed, step reverted to READY (retryable).
 
 > **Tip:** The `generatedPrompt` contains 8 sections: target symbol, current source code, callers (must not break), blast radius, design detail, instruction, and constraints. Read it carefully before coding.
+
+## Trademark Notice
+
+"GitNexus" is a trademark or product name of its respective owner. AI Factory is an independent project that integrates with GitNexus via the MCP protocol. AI Factory is not affiliated with, endorsed by, or sponsored by the GitNexus project or its maintainers. All trademarks are the property of their respective owners.
 
 ## License
 
