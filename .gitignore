@@ -3,3 +3,10 @@ target/
 .idea/
 *.iml
 .superpowers/sdd/
+
+# AI Worker generated code target directory
+repos/
+
+# Local environment config
+*.env
+application-local.yml
