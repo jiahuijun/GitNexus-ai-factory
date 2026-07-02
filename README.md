@@ -249,6 +249,32 @@ Tests use H2 in-memory database and stub GitNexus/LLM beans (via `@ConditionalOn
 
 If you're a Claude Code (or other AI) instance looking to pick up tasks, see [WORKER_GUIDE.md](WORKER_GUIDE.md) for the claim → develop → complete workflow.
 
+### Quick Start for AI Agents
+
+1. Read the [WORKER_GUIDE.md](WORKER_GUIDE.md) file in this repository — it contains all the curl commands and workflow steps.
+2. Make sure the AI Factory service is running at `http://localhost:8082` (or set `API` variable accordingly).
+3. Check if you have claimed tasks:
+   ```bash
+   curl -s "http://localhost:8082/tasks/steps/claimed?userId=1" | python -m json.tool
+   ```
+4. If no claimed tasks, find a READY step and claim it:
+   ```bash
+   curl -s "http://localhost:8082/tasks" | python -m json.tool
+   curl -s -X POST "http://localhost:8082/tasks/{stepId}/claim" \
+     -H "Content-Type: application/json" \
+     -d '{"userId": 1}' | python -m json.tool
+   ```
+5. The response includes a `generatedPrompt` field — this is your complete development instruction. Follow it to modify the code.
+6. After coding, mark the step as complete:
+   ```bash
+   curl -s -X POST "http://localhost:8082/tasks/{stepId}/complete" \
+     -H "Content-Type: application/json" \
+     -d '{"userId": 1, "repo": "your-repo-name"}'
+   ```
+7. `true` = success (successors auto-unlocked). `false` = change detection failed, step reverted to READY (retryable).
+
+> **Tip:** The `generatedPrompt` contains 8 sections: target symbol, current source code, callers (must not break), blast radius, design detail, instruction, and constraints. Read it carefully before coding.
+
 ## License
 
 MIT

@@ -249,6 +249,32 @@ mvn test
 
 如果你是 Claude Code（或其他 AI）实例，想要认领任务，请参阅 [WORKER_GUIDE.md](WORKER_GUIDE.md) 了解认领 → 开发 → 完成的工作流程。
 
+### AI Agent 快速上手
+
+1. 阅读本仓库的 [WORKER_GUIDE.md](WORKER_GUIDE.md) 文件 —— 包含所有 curl 命令和工作流步骤。
+2. 确保 AI Factory 服务正在运行（默认地址 `http://localhost:8082`）。
+3. 查看你是否已有已认领的任务：
+   ```bash
+   curl -s "http://localhost:8082/tasks/steps/claimed?userId=1" | python -m json.tool
+   ```
+4. 如果没有待办，找到一个 READY 步骤并认领：
+   ```bash
+   curl -s "http://localhost:8082/tasks" | python -m json.tool
+   curl -s -X POST "http://localhost:8082/tasks/{stepId}/claim" \
+     -H "Content-Type: application/json" \
+     -d '{"userId": 1}' | python -m json.tool
+   ```
+5. 返回的 JSON 包含 `generatedPrompt` 字段 —— 这是你的完整开发指令，按它修改代码。
+6. 编码完成后，标记步骤完成：
+   ```bash
+   curl -s -X POST "http://localhost:8082/tasks/{stepId}/complete" \
+     -H "Content-Type: application/json" \
+     -d '{"userId": 1, "repo": "your-repo-name"}'
+   ```
+7. 返回 `true` = 成功（后继步骤自动解锁）。返回 `false` = 变更检测未通过，步骤回退为 READY（可重试）。
+
+> **提示：** `generatedPrompt` 包含 8 个段落：目标符号、当前源码、调用方（不可破坏）、影响面、设计详情、编码指令、约束条件。编码前请仔细阅读。
+
 ## 开源协议
 
 MIT
