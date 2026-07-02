@@ -87,6 +87,6 @@ class TaskDecompositionServiceTest {
         assertEquals(1, pending.size(), "UserController should be PENDING (depends on A)");
         assertEquals(1, pending.get(0).getDependsOnCount());
 
-        assertEquals(1, deps.selectList(null).size(), "one dependency edge A→B");
+        assertEquals(1, deps.findByTaskId(taskId).size(), "one dependency edge A→B");
     }
 }

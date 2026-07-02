@@ -1,6 +1,8 @@
 package com.factory.ai.task.service;
 
 import com.factory.ai.task.domain.TaskStep;
+import com.factory.ai.task.domain.TaskStepStatus;
+import com.factory.ai.task.mapper.TaskStepMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,15 +37,22 @@ public class TaskExecutionService {
     private final TaskClaimService claimService;
     private final TaskCompletionService completionService;
     private final LlmGateway llm;
+    private final TaskStepMapper stepMapper;
 
     @Value("${factory.worker.repo-base-path:./repos}")
     private String repoBasePath;
 
+    /** 最大重试次数，超过后步骤标记为 CANCELLED，防止无限重试烧钱。 */
+    @Value("${factory.worker.max-retries:3}")
+    private int maxRetries;
+
     public TaskExecutionService(TaskClaimService claimService,
-            TaskCompletionService completionService, LlmGateway llm) {
+            TaskCompletionService completionService, LlmGateway llm,
+            TaskStepMapper stepMapper) {
         this.claimService = claimService;
         this.completionService = completionService;
         this.llm = llm;
+        this.stepMapper = stepMapper;
     }
 
     /**
@@ -88,8 +97,19 @@ public class TaskExecutionService {
         // 4. 完成：detectChanges 验证 + DONE + 解锁后继
         boolean ok = completionService.complete(stepId, userId, repo);
         if (!ok) {
-            // detectChanges 未通过：显式回退为 READY，允许重试
-            claimService.revertClaim(stepId);
+            // detectChanges 未通过：递增重试次数
+            step = stepMapper.selectById(stepId);
+            step.incrementRetryCount();
+            stepMapper.updateById(step);
+
+            if (step.getRetryCount() >= maxRetries) {
+                // 超过最大重试次数：标记 CANCELLED，不再重试
+                step.setStatus(TaskStepStatus.CANCELLED);
+                stepMapper.updateById(step);
+            } else {
+                // 仍有重试机会：回退为 READY
+                claimService.revertClaim(stepId);
+            }
             return false;
         }
         return true;

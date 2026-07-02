@@ -1,6 +1,8 @@
 package com.factory.ai.task.service;
 
 import com.factory.ai.task.domain.TaskStep;
+import com.factory.ai.task.domain.TaskStepStatus;
+import com.factory.ai.task.mapper.TaskStepMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +27,7 @@ class TaskExecutionServiceTest {
     private TaskClaimService claimService;
     private TaskCompletionService completionService;
     private LlmGateway llm;
+    private TaskStepMapper stepMapper;
     private TaskExecutionService executionService;
 
     @BeforeEach
@@ -32,7 +35,9 @@ class TaskExecutionServiceTest {
         claimService = mock(TaskClaimService.class);
         completionService = mock(TaskCompletionService.class);
         llm = mock(LlmGateway.class);
-        executionService = new TaskExecutionService(claimService, completionService, llm);
+        stepMapper = mock(TaskStepMapper.class);
+        executionService = new TaskExecutionService(claimService, completionService, llm, stepMapper);
+        setMaxRetries(3);
     }
 
     @Test
@@ -95,17 +100,19 @@ class TaskExecutionServiceTest {
         step.setId(3L);
         step.setTargetFile("src/Fail.java");
         step.setGeneratedPrompt("prompt");
+        step.setRetryCount(0);
 
         when(claimService.claim(anyLong(), anyLong())).thenReturn(step);
         when(llm.executeStep(any())).thenReturn("code");
-        // detectChanges 未通过 → complete 返回 false
         when(completionService.complete(anyLong(), anyLong(), any())).thenReturn(false);
+        when(stepMapper.selectById(3L)).thenReturn(step);
 
         boolean result = executionService.execute(3L, 42L, "repo");
 
         assertFalse(result);
-        // 应调用 revertClaim 回退为 READY
+        // 第一次失败，retryCount=1 < maxRetries=3，应回退为 READY
         verify(claimService).revertClaim(3L);
+        assertEquals(1, step.getRetryCount());
     }
 
     @Test
@@ -128,6 +135,30 @@ class TaskExecutionServiceTest {
     }
 
     @Test
+    void executeCancelsAfterMaxRetries(@TempDir Path tempDir) {
+        setRepoBasePath(tempDir.toString());
+
+        TaskStep step = new TaskStep();
+        step.setId(5L);
+        step.setTargetFile("src/Cancelled.java");
+        step.setGeneratedPrompt("prompt");
+        step.setRetryCount(2); // 已经失败 2 次，再失败就是第 3 次 = maxRetries
+
+        when(claimService.claim(anyLong(), anyLong())).thenReturn(step);
+        when(llm.executeStep(any())).thenReturn("code");
+        when(completionService.complete(anyLong(), anyLong(), any())).thenReturn(false);
+        when(stepMapper.selectById(5L)).thenReturn(step);
+
+        boolean result = executionService.execute(5L, 42L, "repo");
+
+        assertFalse(result);
+        // 超过 maxRetries，应标记 CANCELLED 而非回退 READY
+        verify(claimService, never()).revertClaim(5L);
+        assertEquals(3, step.getRetryCount());
+        assertEquals(TaskStepStatus.CANCELLED, step.getStatus());
+    }
+
+    @Test
     void stripCodeFencesHandlesPlainCode() {
         assertEquals("public class A {}", TaskExecutionService.stripCodeFences("public class A {}"));
     }
@@ -147,6 +178,16 @@ class TaskExecutionServiceTest {
             var field = TaskExecutionService.class.getDeclaredField("repoBasePath");
             field.setAccessible(true);
             field.set(executionService, path);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void setMaxRetries(int max) {
+        try {
+            var field = TaskExecutionService.class.getDeclaredField("maxRetries");
+            field.setAccessible(true);
+            field.setInt(executionService, max);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

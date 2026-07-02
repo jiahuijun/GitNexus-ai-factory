@@ -88,6 +88,9 @@ public class TaskStep {
     /** 是否需要人工复核（如 AI 执行结果不确定时置为 true） */
     private boolean needsReview;
 
+    /** 失败重试次数。每次 detectChanges 失败时递增，超过阈值（默认 3）则标记 CANCELLED */
+    private int retryCount;
+
     /** 创建时间 */
     private LocalDateTime createdAt;
 
@@ -170,6 +173,15 @@ public class TaskStep {
 
     /** @param v 是否需要人工复核 */
     public void setNeedsReview(boolean v) { this.needsReview = v; }
+
+    /** @return 失败重试次数 */
+    public int getRetryCount() { return retryCount; }
+
+    /** @param retryCount 失败重试次数 */
+    public void setRetryCount(int retryCount) { this.retryCount = retryCount; }
+
+    /** 递增重试次数 */
+    public void incrementRetryCount() { this.retryCount++; }
 
     /** @return 所属父任务 ID */
     public Long getTaskId() { return taskId; }

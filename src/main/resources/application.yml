@@ -39,6 +39,7 @@ factory:
       enabled: true
   worker:
     repo-base-path: ${REPO_BASE_PATH:./repos}
+    max-retries: ${MAX_RETRIES:3}
 
 mybatis-plus:
   configuration:
@@ -46,3 +47,12 @@ mybatis-plus:
   global-config:
     db-config:
       id-type: auto
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when_authorized

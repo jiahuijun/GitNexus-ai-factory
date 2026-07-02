@@ -1,0 +1,7 @@
+# Test profile overrides.
+# Disable real GitNexus/LLM beans so tests use stub implementations,
+# and skip ConfigValidator startup checks.
+factory:
+  clients:
+    real:
+      enabled: false

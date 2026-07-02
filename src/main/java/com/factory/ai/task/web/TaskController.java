@@ -8,6 +8,7 @@ import com.factory.ai.task.mapper.TaskDependencyMapper;
 import com.factory.ai.task.mapper.TaskMapper;
 import com.factory.ai.task.mapper.TaskStepMapper;
 import com.factory.ai.task.service.LlmException;
+import com.factory.ai.task.service.TaskCancellationService;
 import com.factory.ai.task.service.TaskClaimService;
 import com.factory.ai.task.service.TaskCompletionService;
 import com.factory.ai.task.service.TaskDecompositionService;
@@ -44,16 +45,18 @@ public class TaskController {
     private final TaskClaimService claim;
     private final TaskCompletionService complete;
     private final TaskExecutionService execution;
+    private final TaskCancellationService cancellation;
     private final TaskMapper taskMapper;
     private final TaskStepMapper stepMapper;
     private final TaskDependencyMapper depMapper;
 
     public TaskController(TaskDecompositionService decomp, TaskClaimService claim,
             TaskCompletionService complete, TaskExecutionService execution,
+            TaskCancellationService cancellation,
             TaskMapper taskMapper, TaskStepMapper stepMapper,
             TaskDependencyMapper depMapper) {
         this.decomp = decomp; this.claim = claim; this.complete = complete;
-        this.execution = execution;
+        this.execution = execution; this.cancellation = cancellation;
         this.taskMapper = taskMapper; this.stepMapper = stepMapper; this.depMapper = depMapper;
     }
 
@@ -135,6 +138,39 @@ public class TaskController {
     }
 
     // --- GET 查询端点 ---
+
+    /**
+     * 取消整个任务：所有未完成步骤 → CANCELLED，任务 → CANCELLED。
+     *
+     * <p>用于任务需要中止的场景。已 DONE 的步骤不受影响。
+     * 取消的步骤会递减后继的 dependsOnCount，归零的后继变为 READY。</p>
+     *
+     * @param id 任务 ID
+     * @return 200 OK（取消成功）；404 Not Found（任务不存在）
+     */
+    @PostMapping("/{id}/cancel")
+    public ResponseEntity<Void> cancelTask(@PathVariable Long id) {
+        try {
+            cancellation.cancelTask(id);
+            return ResponseEntity.ok().build();
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
+     * 释放单个卡住的 IN_PROGRESS 步骤，回退为 READY。
+     *
+     * <p>用于 Worker 崩溃后恢复：步骤卡在 IN_PROGRESS 状态，
+     * 释放后清除认领人，可被其他 Worker 重新认领。</p>
+     *
+     * @param stepId 步骤 ID
+     * @return 200 OK + true（释放成功）；200 OK + false（步骤不存在或非 IN_PROGRESS）
+     */
+    @PostMapping("/steps/{stepId}/release")
+    public ResponseEntity<Boolean> releaseStep(@PathVariable Long stepId) {
+        return ResponseEntity.ok(cancellation.releaseStep(stepId));
+    }
 
     @GetMapping
     public ResponseEntity<PageResponse<TaskResponse>> list(
