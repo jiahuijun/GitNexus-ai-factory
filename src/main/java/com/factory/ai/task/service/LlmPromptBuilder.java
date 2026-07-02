@@ -1,5 +1,6 @@
 package com.factory.ai.task.service;
 
+import com.factory.ai.chat.session.ChatMessage;
 import com.factory.ai.gitnexus.dto.QueryResult;
 import org.springframework.stereotype.Component;
 
@@ -99,6 +100,55 @@ public class LlmPromptBuilder {
                 requirement,
                 symbols.isBlank() ? "(无)" : symbols,
                 processes.isBlank() ? "(无)" : processes
+            );
+    }
+
+    /** 澄清模式系统提示词：约束 LLM 作为架构师与用户交互式澄清需求。 */
+    public static final String CLARIFY_SYSTEM_PROMPT = """
+        你是一名资深架构师，正在与用户澄清一个开发需求。
+        你会收到：原始需求、GitNexus 摸底结果（相关符号列表）、对话历史。
+
+        规则：
+        1. 每轮最多问 1-3 个聚焦问题，不要一次性问太多。
+        2. 问题要基于摸底结果中的真实符号/文件，例如"我看到 BinaryLogClient 已有 keepAlive 机制，心跳检测要复用还是独立？"
+        3. 当用户的回答已覆盖：范围、目标符号、边界条件、验收标准时，设 ready=true 并在 refinedRequirement 中合成精炼需求段落。
+        4. 输出严格 JSON：{"message":"...","ready":false,"refinedRequirement":null}
+        5. ready=true 时 message 写"需求已澄清，可以拆解"，refinedRequirement 写合成的需求段落。
+        """;
+
+    /**
+     * 组装澄清模式的用户消息：原始需求 + 摸底符号列表 + 对话历史。
+     *
+     * @param requirement 原始需求文本
+     * @param queryResult GitNexus 摸底结果（缓存）
+     * @param history     对话历史（user/assistant 交替）
+     * @return 拼装好的用户消息字符串
+     */
+    public String buildClarifyUserMessage(String requirement, QueryResult queryResult, List<ChatMessage> history) {
+        String symbols = queryResult.symbols().stream()
+            .map(s -> "- " + s.name() + " @ " + s.filePath())
+            .collect(Collectors.joining("\n"));
+
+        StringBuilder historyText = new StringBuilder();
+        for (ChatMessage msg : history) {
+            historyText.append(msg.role()).append(": ").append(msg.text()).append("\n");
+        }
+
+        return """
+            原始需求: %s
+
+            GitNexus 摸底结果:
+            相关符号:
+            %s
+
+            对话历史:
+            %s
+
+            请按系统指令输出 JSON。
+            """.formatted(
+                requirement,
+                symbols.isBlank() ? "(无)" : symbols,
+                historyText.length() == 0 ? "(无)" : historyText.toString()
             );
     }
 }

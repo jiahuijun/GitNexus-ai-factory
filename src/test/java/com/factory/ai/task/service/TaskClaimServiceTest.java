@@ -42,6 +42,9 @@ class TaskClaimServiceTest {
             return new LlmGateway() {
                 @Override public List<TaskDraft> splitTasks(String req, QueryResult ctx) { return List.of(); }
                 @Override public String executeStep(String prompt) { return ""; }
+                @Override public ClarifyReply clarify(String req, QueryResult ctx, List<com.factory.ai.chat.session.ChatMessage> history) {
+                    return new ClarifyReply("mock", false, null);
+                }
             };
         }
     }

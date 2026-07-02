@@ -57,6 +57,20 @@
         .loading { text-align: center; padding: 40px; color: #999; }
         .json-view { background: #f8f9fa; border-radius: 4px; padding: 12px; font-family: monospace; font-size: 13px;
             white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 16px; }
+        .pagination button { min-width: 32px; height: 32px; border: 1px solid #ddd; background: #fff;
+            border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .pagination button:hover:not(:disabled) { background: #e94560; color: #fff; border-color: #e94560; }
+        .pagination button.active { background: #e94560; color: #fff; border-color: #e94560; }
+        .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .pagination .info { font-size: 13px; color: #666; margin-left: 8px; }
+        /* Chat UI */
+        .chat-messages { max-height: 450px; overflow-y: auto; padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 16px; }
+        .chat-bubble { max-width: 75%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; margin-bottom: 8px; word-wrap: break-word; }
+        .chat-bubble.user { background: #e94560; color: #fff; margin-left: auto; border-bottom-right-radius: 4px; }
+        .chat-bubble.assistant { background: #fff; color: #333; border: 1px solid #e0e0e0; border-bottom-left-radius: 4px; }
+        .chat-input-row { display: flex; gap: 8px; margin-bottom: 16px; }
+        .chat-input-row input { flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -64,6 +78,7 @@
         <h1>AI Factory</h1>
         <a id="nav-tasks" class="active" onclick="showView('tasks')">任务列表</a>
         <a id="nav-decompose" onclick="showView('decompose')">提交需求</a>
+        <a id="nav-chat" onclick="showView('chat')">需求对话</a>
         <a id="nav-back" class="hidden" onclick="showView('tasks')">← 返回列表</a>
     </nav>
 
@@ -86,6 +101,7 @@
                         <tr><td colspan="5" class="loading">加载中...</td></tr>
                     </tbody>
                 </table>
+                <div id="pagination" class="pagination"></div>
             </div>
         </div>
 
@@ -110,6 +126,38 @@
             </div>
         </div>
 
+        <!-- 需求对话视图 -->
+        <div id="view-chat" class="hidden">
+            <div class="card" id="chat-start-card">
+                <h2 style="margin-bottom: 20px;">需求对话 — 交互式澄清后拆解</h2>
+                <div id="chat-alert"></div>
+                <div class="form-group">
+                    <label>产品需求（自然语言描述）</label>
+                    <textarea id="chat-requirement" placeholder="例如：给 BinaryLogClient 添加断线重连指数退避策略"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>目标仓库</label>
+                    <input type="text" id="chat-repo" value="mysql-binlog-connector-java">
+                </div>
+                <div class="form-group">
+                    <label>管理员 ID</label>
+                    <input type="number" id="chat-adminId" value="1" min="1">
+                </div>
+                <button class="btn btn-primary" onclick="startChatSession()">开始对话</button>
+            </div>
+
+            <div id="chat-conversation" class="hidden">
+                <div class="card">
+                    <div class="chat-messages" id="chat-messages"></div>
+                    <div class="chat-input-row">
+                        <input type="text" id="chat-input" placeholder="输入回答..." onkeypress="if(event.key==='Enter')sendChatMessage()">
+                        <button class="btn btn-primary" onclick="sendChatMessage()">发送</button>
+                    </div>
+                    <button id="chat-confirm" class="btn btn-success hidden" onclick="confirmDecompose()">确认拆解</button>
+                </div>
+            </div>
+        </div>
+
         <!-- 任务详情视图 -->
         <div id="view-detail" class="hidden">
             <div id="detail-content"></div>
@@ -119,10 +167,12 @@
     <script>
         const API = '';
         let currentStatusFilter = '';
+        let currentPage = 1;
+        const PAGE_SIZE = 10;
 
         // === 视图切换 ===
         function showView(view) {
-            ['tasks', 'decompose', 'detail'].forEach(v => {
+            ['tasks', 'decompose', 'chat', 'detail'].forEach(v => {
                 document.getElementById('view-' + v).classList.add('hidden');
             });
             document.getElementById('view-' + view).classList.remove('hidden');
@@ -133,6 +183,8 @@
                 loadTasks();
             } else if (view === 'decompose') {
                 document.getElementById('nav-decompose').classList.add('active');
+            } else if (view === 'chat') {
+                document.getElementById('nav-chat').classList.add('active');
             } else {
                 document.getElementById('nav-back').classList.remove('hidden');
             }
@@ -140,31 +192,139 @@
 
         // === 任务列表 ===
         async function loadTasks() {
-            const url = currentStatusFilter ? `/tasks?status=${currentStatusFilter}` : '/tasks';
+            const params = new URLSearchParams({ page: currentPage, size: PAGE_SIZE });
+            if (currentStatusFilter) params.set('status', currentStatusFilter);
             try {
-                const res = await fetch(API + url);
-                const tasks = await res.json();
+                const res = await fetch(API + '/tasks?' + params);
+                const data = await res.json();
+                const tasks = data.items;
                 const body = document.getElementById('task-list-body');
                 if (tasks.length === 0) {
                     body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;">暂无任务</td></tr>';
-                    return;
+                } else {
+                    body.innerHTML = tasks.map(t => `
+                        <tr class="clickable" onclick="showDetail(${t.id})">
+                            <td>${t.id}</td>
+                            <td style="max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.requirement)}</td>
+                            <td><span class="badge badge-${t.status}">${statusLabel(t.status)}</span></td>
+                            <td>${t.createdBy}</td>
+                            <td><button class="btn btn-primary btn-sm" onclick="event.stopPropagation();showDetail(${t.id})">详情</button></td>
+                        </tr>
+                    `).join('');
                 }
-                body.innerHTML = tasks.map(t => `
-                    <tr class="clickable" onclick="showDetail(${t.id})">
-                        <td>${t.id}</td>
-                        <td style="max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.requirement)}</td>
-                        <td><span class="badge badge-${t.status}">${statusLabel(t.status)}</span></td>
-                        <td>${t.createdBy}</td>
-                        <td><button class="btn btn-primary btn-sm" onclick="event.stopPropagation();showDetail(${t.id})">详情</button></td>
-                    </tr>
-                `).join('');
+                renderPagination(data);
             } catch (e) {
                 document.getElementById('task-list-body').innerHTML = `<tr><td colspan="5" style="color:red;">加载失败: ${esc(e.message)}</td></tr>`;
+                document.getElementById('pagination').innerHTML = '';
+            }
+        }
+
+        function renderPagination(data) {
+            const container = document.getElementById('pagination');
+            const { page, totalPages, total, size } = data;
+            if (totalPages <= 1) {
+                container.innerHTML = `<span class="info">共 ${total} 条</span>`;
+                return;
+            }
+            let html = '';
+            // 上一页
+            html += `<button ${page <= 1 ? 'disabled' : ''} onclick="goToPage(${page - 1})">上一页</button>`;
+            // 页码按钮（最多显示前后 2 页）
+            const start = Math.max(1, page - 2);
+            const end = Math.min(totalPages, page + 2);
+            if (start > 1) {
+                html += `<button onclick="goToPage(1)">1</button>`;
+                if (start > 2) html += '<span class="info">...</span>';
+            }
+            for (let i = start; i <= end; i++) {
+                html += `<button class="${i === page ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+            }
+            if (end < totalPages) {
+                if (end < totalPages - 1) html += '<span class="info">...</span>';
+                html += `<button onclick="goToPage(${totalPages})">${totalPages}</button>`;
+            }
+            // 下一页
+            html += `<button ${page >= totalPages ? 'disabled' : ''} onclick="goToPage(${page + 1})">下一页</button>`;
+            html += `<span class="info">共 ${total} 条 / ${totalPages} 页</span>`;
+            container.innerHTML = html;
+        }
+
+        function goToPage(page) {
+            currentPage = page;
+            loadTasks();
+        }
+
+        let stepCurrentPage = {};
+        function renderStepPagination(data, taskId) {
+            const container = document.getElementById('step-pagination');
+            if (!container) return;
+            stepCurrentPage[taskId] = stepCurrentPage[taskId] || 1;
+            const { page, totalPages, total } = data;
+            if (totalPages <= 1) {
+                container.innerHTML = `<span class="info">共 ${total} 条</span>`;
+                return;
+            }
+            let html = '';
+            html += `<button ${page <= 1 ? 'disabled' : ''} onclick="goToStepPage(${taskId}, ${page - 1})">上一页</button>`;
+            const start = Math.max(1, page - 2);
+            const end = Math.min(totalPages, page + 2);
+            if (start > 1) {
+                html += `<button onclick="goToStepPage(${taskId}, 1)">1</button>`;
+                if (start > 2) html += '<span class="info">...</span>';
+            }
+            for (let i = start; i <= end; i++) {
+                html += `<button class="${i === page ? 'active' : ''}" onclick="goToStepPage(${taskId}, ${i})">${i}</button>`;
+            }
+            if (end < totalPages) {
+                if (end < totalPages - 1) html += '<span class="info">...</span>';
+                html += `<button onclick="goToStepPage(${taskId}, ${totalPages})">${totalPages}</button>`;
+            }
+            html += `<button ${page >= totalPages ? 'disabled' : ''} onclick="goToStepPage(${taskId}, ${page + 1})">下一页</button>`;
+            html += `<span class="info">共 ${total} 条 / ${totalPages} 页</span>`;
+            container.innerHTML = html;
+        }
+
+        function goToStepPage(taskId, page) {
+            stepCurrentPage[taskId] = page;
+            // 重新加载详情页的步骤列表
+            loadStepPage(taskId, page);
+        }
+
+        async function loadStepPage(taskId, page) {
+            try {
+                const res = await fetch(`${API}/tasks/${taskId}/steps?page=${page}&size=20`);
+                const data = await res.json();
+                const steps = data.items || [];
+                const tbody = document.querySelector('#step-pagination').closest('table').querySelector('tbody');
+                tbody.innerHTML = steps.map(s => `
+                    <tr>
+                        <td>${s.id}</td>
+                        <td>${esc(s.stepName)}</td>
+                        <td style="font-family:monospace;font-size:13px;">${esc(s.targetSymbol)}</td>
+                        <td><span class="badge badge-${s.status}">${statusLabel(s.status)}</span></td>
+                        <td>${s.assigneeId || '-'}</td>
+                        <td>${s.dependsOnCount}</td>
+                        <td class="actions-cell">${renderStepActions(s)}</td>
+                    </tr>
+                    <tr id="prompt-row-${s.id}" class="hidden">
+                        <td colspan="7">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                                <strong>Generated Prompt</strong>
+                                <button class="btn btn-secondary btn-sm" onclick="togglePrompt(${s.id})">收起</button>
+                            </div>
+                            <div class="step-prompt" id="prompt-content-${s.id}">加载中...</div>
+                        </td>
+                    </tr>
+                `).join('');
+                renderStepPagination(data, taskId);
+            } catch (e) {
+                console.error('Failed to load step page:', e);
             }
         }
 
         function filterStatus(status) {
             currentStatusFilter = status;
+            currentPage = 1;
             document.querySelectorAll('.status-filter button').forEach(b => b.classList.remove('active'));
             event.target.classList.add('active');
             loadTasks();
@@ -182,7 +342,8 @@
                     fetch(`${API}/tasks/${taskId}/dependencies`)
                 ]);
                 const task = await taskRes.json();
-                const steps = await stepsRes.json();
+                const stepsData = await stepsRes.json();
+                const steps = stepsData.items || [];
                 const deps = await depsRes.json();
 
                 let html = `
@@ -204,7 +365,7 @@
                 // Steps 表
                 html += `
                     <div class="card">
-                        <h3 style="margin-bottom:12px;">步骤列表（${steps.length}）</h3>
+                        <h3 style="margin-bottom:12px;">步骤列表（共 ${stepsData.total} 条）</h3>
                         <table>
                             <thead><tr><th>ID</th><th>步骤名</th><th>目标符号</th><th>状态</th><th>认领人</th><th>待解锁</th><th>操作</th></tr></thead>
                             <tbody>
@@ -232,9 +393,11 @@
                                 `).join('')}
                             </tbody>
                         </table>
+                        <div id="step-pagination" class="pagination"></div>
                     </div>
                 `;
                 container.innerHTML = html;
+                renderStepPagination(stepsData, taskId);
             } catch (e) {
                 container.innerHTML = `<div class="card"><div class="alert alert-error">加载失败: ${esc(e.message)}</div></div>`;
             }
@@ -434,6 +597,141 @@
             } catch (e) {
                 alert('完成失败: ' + e.message);
             }
+        }
+
+        // === 需求对话 ===
+        let chatSessionId = null;
+
+        async function startChatSession() {
+            const requirement = document.getElementById('chat-requirement').value.trim();
+            const repo = document.getElementById('chat-repo').value.trim();
+            const adminId = parseInt(document.getElementById('chat-adminId').value);
+            const alertDiv = document.getElementById('chat-alert');
+
+            if (!requirement) {
+                alertDiv.innerHTML = '<div class="alert alert-error">请输入需求描述</div>';
+                return;
+            }
+            alertDiv.innerHTML = '<div class="alert alert-info">正在初始化对话...（GitNexus 摸底 + LLM 生成第一个问题，约 10-30 秒）</div>';
+
+            try {
+                const res = await fetch(`${API}/chat/sessions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ requirement, repo, adminId })
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.message || `HTTP ${res.status}`);
+                }
+                const data = await res.json();
+                chatSessionId = data.sessionId;
+                alertDiv.innerHTML = '';
+
+                // 切换到对话界面
+                document.getElementById('chat-start-card').classList.add('hidden');
+                document.getElementById('chat-conversation').classList.remove('hidden');
+
+                // 渲染第一个问题
+                document.getElementById('chat-messages').innerHTML = '';
+                appendChatBubble('assistant', data.firstQuestion);
+
+                if (data.ready) {
+                    document.getElementById('chat-confirm').classList.remove('hidden');
+                }
+            } catch (e) {
+                alertDiv.innerHTML = `<div class="alert alert-error">对话启动失败: ${esc(e.message)}</div>`;
+            }
+        }
+
+        async function sendChatMessage() {
+            if (!chatSessionId) return;
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if (!text) return;
+
+            appendChatBubble('user', text);
+            input.value = '';
+
+            // 禁用发送按钮，等待 LLM 回复
+            const sendBtn = input.nextElementSibling;
+            sendBtn.disabled = true;
+            sendBtn.textContent = '思考中...';
+
+            try {
+                const res = await fetch(`${API}/chat/sessions/${chatSessionId}/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+                if (res.status === 404) {
+                    appendChatBubble('assistant', '会话已过期，请重新开始对话。');
+                    chatSessionId = null;
+                    return;
+                }
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.message || `HTTP ${res.status}`);
+                }
+                const data = await res.json();
+                appendChatBubble('assistant', data.reply);
+
+                if (data.ready) {
+                    document.getElementById('chat-confirm').classList.remove('hidden');
+                }
+            } catch (e) {
+                appendChatBubble('assistant', `（错误）${esc(e.message)}`);
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = '发送';
+            }
+        }
+
+        async function confirmDecompose() {
+            if (!chatSessionId) return;
+            if (!confirm('确认拆解？将基于对话中澄清的需求生成任务步骤。')) return;
+
+            const btn = document.getElementById('chat-confirm');
+            btn.disabled = true;
+            btn.textContent = '拆解中...';
+
+            try {
+                const res = await fetch(`${API}/chat/sessions/${chatSessionId}/decompose`, {
+                    method: 'POST'
+                });
+                if (res.status === 404) {
+                    alert('会话已过期，请重新开始对话。');
+                    return;
+                }
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.message || `HTTP ${res.status}`);
+                }
+                const data = await res.json();
+                alert(`拆解成功！任务 ID: ${data.taskId}`);
+                // 重置对话界面
+                chatSessionId = null;
+                document.getElementById('chat-start-card').classList.remove('hidden');
+                document.getElementById('chat-conversation').classList.add('hidden');
+                document.getElementById('chat-confirm').classList.add('hidden');
+                document.getElementById('chat-requirement').value = '';
+                // 跳转到任务详情
+                showDetail(data.taskId);
+            } catch (e) {
+                alert('拆解失败: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '确认拆解';
+            }
+        }
+
+        function appendChatBubble(role, text) {
+            const container = document.getElementById('chat-messages');
+            const bubble = document.createElement('div');
+            bubble.className = `chat-bubble ${role}`;
+            bubble.textContent = text;
+            container.appendChild(bubble);
+            container.scrollTop = container.scrollHeight;
         }
 
         // === 工具函数 ===

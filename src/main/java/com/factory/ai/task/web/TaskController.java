@@ -134,12 +134,19 @@ public class TaskController {
     // --- GET 查询端点 ---
 
     @GetMapping
-    public ResponseEntity<List<TaskResponse>> list(@RequestParam(required = false) String status) {
-        List<Task> tasks = status != null
-            ? taskMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Task>()
-                .eq(Task::getStatus, com.factory.ai.task.domain.TaskStatus.valueOf(status)))
-            : taskMapper.selectList(null);
-        return ResponseEntity.ok(tasks.stream().map(TaskResponse::from).toList());
+    public ResponseEntity<PageResponse<TaskResponse>> list(
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        var queryWrapper = new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Task>();
+        if (status != null) {
+            queryWrapper.eq(Task::getStatus, com.factory.ai.task.domain.TaskStatus.valueOf(status));
+        }
+        queryWrapper.orderByDesc(Task::getId);
+        var pageResult = taskMapper.selectPage(
+            new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(page, size), queryWrapper);
+        var items = pageResult.getRecords().stream().map(TaskResponse::from).toList();
+        return ResponseEntity.ok(PageResponse.of(items, pageResult.getTotal(), page, size));
     }
 
     @GetMapping("/{id}")
@@ -150,10 +157,17 @@ public class TaskController {
     }
 
     @GetMapping("/{id}/steps")
-    public ResponseEntity<List<TaskStepSummary>> getSteps(@PathVariable Long id) {
+    public ResponseEntity<PageResponse<TaskStepSummary>> getSteps(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
         if (taskMapper.selectById(id) == null) return ResponseEntity.notFound().build();
-        return ResponseEntity.ok(
-            stepMapper.findByTaskId(id).stream().map(TaskStepSummary::from).toList());
+        var allSteps = stepMapper.findByTaskId(id);
+        int total = allSteps.size();
+        int from = Math.min((page - 1) * size, total);
+        int to = Math.min(from + size, total);
+        var pageItems = allSteps.subList(from, to).stream().map(TaskStepSummary::from).toList();
+        return ResponseEntity.ok(PageResponse.of(pageItems, total, page, size));
     }
 
     @GetMapping("/{id}/dependencies")
@@ -167,6 +181,20 @@ public class TaskController {
             d.getFromStepId(), d.getToStepId(),
             stepNameMap.get(d.getFromStepId()), stepNameMap.get(d.getToStepId())
         )).toList());
+    }
+
+    /**
+     * 查询某个用户已认领（IN_PROGRESS）的步骤列表。
+     *
+     * <p>worker 在一个 Claude Code 中认领任务后，可在另一个 Claude Code 中
+     * 通过此端点查询自己的待办步骤，获取完整 prompt 后直接开始开发。</p>
+     *
+     * @param userId 用户 ID
+     * @return 已认领的步骤列表（含 generatedPrompt 等完整字段）
+     */
+    @GetMapping("/steps/claimed")
+    public ResponseEntity<List<TaskStep>> getClaimedByUser(@RequestParam Long userId) {
+        return ResponseEntity.ok(stepMapper.findClaimedByUser(userId));
     }
 
     /**

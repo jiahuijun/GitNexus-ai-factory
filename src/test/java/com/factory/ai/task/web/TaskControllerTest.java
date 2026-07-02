@@ -67,7 +67,7 @@ class TaskControllerTest {
     }
 
     @Test
-    void listReturnsAllTasks() throws Exception {
+    void listReturnsPaginatedTasks() throws Exception {
         // 先创建一个任务
         when(gitNexusClient.query(any(), any()))
             .thenReturn(new QueryResult(List.of(), List.of()));
@@ -78,11 +78,15 @@ class TaskControllerTest {
                 .content("{\"requirement\":\"test req\",\"repo\":\"r\",\"adminId\":1}"))
             .andExpect(status().isOk());
 
-        // GET /tasks 应返回至少 1 条
-        mvc.perform(get("/tasks"))
+        // GET /tasks?page=1&size=10 应返回分页结构
+        mvc.perform(get("/tasks").param("page", "1").param("size", "10"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
-            .andExpect(jsonPath("$[0].requirement").value("test req"));
+            .andExpect(jsonPath("$.items.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+            .andExpect(jsonPath("$.items[0].requirement").value("test req"))
+            .andExpect(jsonPath("$.page").value(1))
+            .andExpect(jsonPath("$.size").value(10))
+            .andExpect(jsonPath("$.total").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+            .andExpect(jsonPath("$.totalPages").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
     }
 
     @Test
@@ -124,9 +128,11 @@ class TaskControllerTest {
 
         mvc.perform(get("/tasks/" + taskId + "/steps"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.length()").value(2))
-            .andExpect(jsonPath("$[0].targetSymbol").value("UserService"))
-            .andExpect(jsonPath("$[1].targetSymbol").value("UserController"));
+            .andExpect(jsonPath("$.items.length()").value(2))
+            .andExpect(jsonPath("$.items[0].targetSymbol").value("UserService"))
+            .andExpect(jsonPath("$.items[1].targetSymbol").value("UserController"))
+            .andExpect(jsonPath("$.total").value(2))
+            .andExpect(jsonPath("$.page").value(1));
     }
 
     @Test

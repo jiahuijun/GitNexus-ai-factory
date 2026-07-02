@@ -1,5 +1,6 @@
 package com.factory.ai.task.service;
 
+import com.factory.ai.chat.session.ChatMessage;
 import com.factory.ai.gitnexus.dto.QueryResult;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -109,6 +110,31 @@ public class SpringAiLlmGateway implements LlmGateway {
                 .content();
         } catch (Exception e) {
             throw new LlmException("LLM executeStep failed", e);
+        }
+    }
+
+    /**
+     * 调用 LLM 进行需求澄清，返回下一个问题或标记完成。
+     *
+     * <p>使用 {@link LlmPromptBuilder#CLARIFY_SYSTEM_PROMPT} 约束 LLM 作为架构师角色，
+     * 基于原始需求 + 摸底结果 + 对话历史，输出结构化的 {@link ClarifyReply} JSON。</p>
+     *
+     * @param requirement 原始需求文本
+     * @param context     GitNexus 摸底结果（会话开始时调用一次后缓存）
+     * @param history     对话历史
+     * @return ClarifyReply：message=回复文本，ready=是否已澄清，refinedRequirement=精炼需求
+     * @throws LlmException 当 LLM 调用或网络出错时抛出（不降级）
+     */
+    @Override
+    public ClarifyReply clarify(String requirement, QueryResult context, List<ChatMessage> history) {
+        try {
+            return chatClient.prompt()
+                .system(LlmPromptBuilder.CLARIFY_SYSTEM_PROMPT)
+                .user(promptBuilder.buildClarifyUserMessage(requirement, context, history))
+                .call()
+                .entity(ClarifyReply.class);
+        } catch (Exception e) {
+            throw new LlmException("LLM clarify failed", e);
         }
     }
 }

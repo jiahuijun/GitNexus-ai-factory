@@ -66,6 +66,10 @@ class VipScenarioTest {
                 public String executeStep(String prompt) {
                     return "// generated";
                 }
+                @Override
+                public ClarifyReply clarify(String req, QueryResult ctx, List<com.factory.ai.chat.session.ChatMessage> history) {
+                    return new ClarifyReply("mock", false, null);
+                }
             };
         }
     }

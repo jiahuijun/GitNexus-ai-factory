@@ -1,6 +1,8 @@
 package com.factory.ai.task.service;
 
 import com.factory.ai.gitnexus.dto.QueryResult;
+import com.factory.ai.chat.session.ChatMessage;
+
 import java.util.List;
 
 /**
@@ -48,6 +50,20 @@ public interface LlmGateway {
     String executeStep(String prompt);
 
     /**
+     * 澄清模式：基于需求 + GitNexus 摸底结果 + 对话历史，输出下一个问题或标记完成。
+     *
+     * <p>在对话式需求澄清流程中使用。每轮调用返回 LLM 的下一个澄清问题，
+     * 或当信息已充分时标记 {@code ready=true} 并合成精炼需求段落。</p>
+     *
+     * @param requirement 原始需求文本
+     * @param context     GitNexus query() 返回的摸底结果（在会话开始时调用一次后缓存）
+     * @param history     对话历史（user/assistant 交替的 ChatMessage 列表）
+     * @return ClarifyReply：message=回复文本，ready=是否已澄清，refinedRequirement=ready 时的精炼需求
+     * @throws LlmException 当 LLM 调用或网络出错时抛出（不降级）
+     */
+    ClarifyReply clarify(String requirement, QueryResult context, List<ChatMessage> history);
+
+    /**
      * 任务草稿记录，由 LLM 输出的单条拆解结果。
      *
      * @param stepName      动词短语，描述该任务做什么（如 "加getVipLevel方法"）
@@ -57,4 +73,13 @@ public interface LlmGateway {
      *                      实现思路（伪代码或关键步骤）、依赖的其他模块
      */
     record TaskDraft(String stepName, String targetSymbol, String designDetail) {}
+
+    /**
+     * 澄清回复记录。
+     *
+     * @param message           LLM 的回复文本（澄清问题或"需求已澄清"提示）
+     * @param ready             是否已收集足够信息可以拆解
+     * @param refinedRequirement ready=true 时合成的精炼需求段落；null 表示尚未完成澄清
+     */
+    record ClarifyReply(String message, boolean ready, String refinedRequirement) {}
 }

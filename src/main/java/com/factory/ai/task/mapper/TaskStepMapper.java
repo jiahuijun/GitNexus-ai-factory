@@ -55,6 +55,9 @@ public interface TaskStepMapper extends BaseMapper<TaskStep> {
     @Select("SELECT * FROM task_step WHERE task_id = #{taskId} ORDER BY id")
     List<TaskStep> findByTaskId(@Param("taskId") Long taskId);
 
+    @Select("SELECT * FROM task_step WHERE assignee_id = #{userId} AND status = 'IN_PROGRESS' ORDER BY id")
+    List<TaskStep> findClaimedByUser(@Param("userId") Long userId);
+
     /**
      * 回退认领：将 IN_PROGRESS 的步骤回退为 READY，清除认领人。
      *
