@@ -2,6 +2,8 @@ package com.factory.ai.gitnexus;
 
 import com.factory.ai.gitnexus.dto.*;
 
+import java.util.List;
+
 /**
  * GitNexus 代码知识图谱客户端接口。
  *
@@ -72,4 +74,15 @@ public interface GitNexusClient {
      * @throws GitNexusException 当 MCP 调用失败或服务返回错误时抛出
      */
     boolean detectChanges(String repo);
+
+    /**
+     * 列出 GitNexus 中所有已索引的仓库。
+     *
+     * <p>对应 MCP 工具 {@code list_repos}：返回仓库名称与路径列表，
+     * 供前端渲染仓库选择下拉框。该方法为 {@code default} 实现，
+     * 返回空列表——测试桩无需覆写。</p>
+     *
+     * @return 已索引仓库列表；无仓库或未实现时返回空列表
+     */
+    default List<RepoInfo> listRepos() { return List.of(); }
 }

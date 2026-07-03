@@ -145,6 +145,27 @@ class SpringAiMcpGitNexusClientTest {
     }
 
     @Test
+    void listReposParsesRepoArray() {
+        // list_repos returns a bare JSON array of {name, path, ...} objects.
+        String json = """
+            [
+              {"name":"mysql-binlog-connector-java","path":"/repos/mysql-binlog-connector-java","indexedDate":"2024-01-01"},
+              {"name":"ai-factory","path":"/repos/ai-factory","indexedDate":"2024-06-01"}
+            ]
+            """;
+        when(mcpClient.callTool(any(CallToolRequest.class)))
+            .thenReturn(callToolResultWithText(json));
+
+        var client = new SpringAiMcpGitNexusClient(mcpClient);
+        List<RepoInfo> repos = client.listRepos();
+
+        assertEquals(2, repos.size());
+        assertEquals("mysql-binlog-connector-java", repos.get(0).name());
+        assertEquals("/repos/mysql-binlog-connector-java", repos.get(0).path());
+        assertEquals("ai-factory", repos.get(1).name());
+    }
+
+    @Test
     void throwsGitNexusExceptionWhenMcpReturnsError() {
         when(mcpClient.callTool(any(CallToolRequest.class)))
             .thenReturn(callToolResultWithError("tool failed"));

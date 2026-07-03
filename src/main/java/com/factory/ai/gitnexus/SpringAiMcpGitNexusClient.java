@@ -180,6 +180,27 @@ public class SpringAiMcpGitNexusClient implements GitNexusClient {
         return changed.isArray() && !changed.isEmpty();
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>实现细节：调用 MCP {@code list_repos} 工具（无参数），返回 JSON 数组。
+     * 兼容两种响应格式：裸数组 {@code [{name, path}, ...]} 或包装对象 {@code {repos: [...]}}。
+     */
+    @Override
+    public List<RepoInfo> listRepos() {
+        JsonNode root = callTool("list_repos", Map.of());
+        // list_repos 可能返回裸数组或 {repos: [...]} 对象，两种格式都兼容
+        JsonNode reposNode = root.isArray() ? root : root.path("repos");
+        List<RepoInfo> repos = new ArrayList<>();
+        for (JsonNode repo : reposNode) {
+            String name = repo.path("name").asText("");
+            if (!name.isEmpty()) {
+                repos.add(new RepoInfo(name, repo.path("path").asText("")));
+            }
+        }
+        return repos;
+    }
+
     // --- internals ---
 
     /**

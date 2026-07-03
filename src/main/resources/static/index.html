@@ -130,7 +130,8 @@
                 </div>
                 <div class="form-group">
                     <label>目标仓库</label>
-                    <input type="text" id="chat-repo" value="mysql-binlog-connector-java">
+                    <input type="text" id="chat-repo" list="repo-list" value="mysql-binlog-connector-java">
+                    <datalist id="repo-list"></datalist>
                 </div>
                 <div class="form-group">
                     <label>管理员 ID</label>
@@ -531,8 +532,7 @@
         }
 
         async function executeStep(stepId) {
-            const repo = prompt('输入仓库名:', 'mysql-binlog-connector-java');
-            if (!repo) return;
+            const repo = document.getElementById('chat-repo').value.trim() || 'mysql-binlog-connector-java';
             if (!confirm(`确认自动执行步骤 ${stepId}？\n（LLM 将生成代码并写入文件，约 30-60 秒）`)) return;
             const btn = event.target;
             btn.disabled = true;
@@ -564,8 +564,7 @@
         }
 
         async function completeStep(stepId) {
-            const repo = prompt('输入仓库名:', 'mysql-binlog-connector-java');
-            if (!repo) return;
+            const repo = document.getElementById('chat-repo').value.trim() || 'mysql-binlog-connector-java';
             try {
                 const res = await fetch(`${API}/tasks/${stepId}/complete`, {
                     method: 'POST',
@@ -906,8 +905,21 @@
             return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
+        // === 仓库列表 ===
+        async function loadRepos() {
+            try {
+                const res = await fetch(API + '/repos');
+                if (res.ok) {
+                    const repos = await res.json();
+                    const datalist = document.getElementById('repo-list');
+                    datalist.innerHTML = repos.map(r => `<option value="${esc(r.name)}">${esc(r.path)}</option>`).join('');
+                }
+            } catch (e) { /* 静默失败，用户仍可手工输入 */ }
+        }
+
         // 初始加载
         loadTasks();
+        loadRepos();
     </script>
 </body>
 </html>
