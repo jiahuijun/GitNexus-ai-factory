@@ -17,10 +17,12 @@ import java.util.NoSuchElementException;
 /**
  * 对话式需求澄清 REST 控制器。
  *
- * <p>暴露 {@code /chat/sessions} 下的三个端点，实现交互式需求澄清流程：
+ * <p>暴露 {@code /chat/sessions} 下的端点，实现交互式需求澄清流程：
  * <ul>
  *   <li>{@code POST /chat/sessions} — 开始会话：GitNexus 摸底 + LLM 第一个问题</li>
+ *   <li>{@code GET /chat/sessions/{id}} — 获取会话状态（恢复对话）</li>
  *   <li>{@code POST /chat/sessions/{id}/messages} — 发送回答，获取下一个问题</li>
+ *   <li>{@code POST /chat/sessions/{id}/preview} — 预览拆解结果（不入库）</li>
  *   <li>{@code POST /chat/sessions/{id}/decompose} — 确认拆解，生成任务</li>
  * </ul>
  *
@@ -39,9 +41,6 @@ public class ChatController {
 
     /**
      * 开始澄清会话。
-     *
-     * @param req 包含需求、仓库名、管理员 ID
-     * @return 会话 ID + 第一个澄清问题
      */
     @PostMapping
     public ResponseEntity<StartSessionResponse> start(@Valid @RequestBody StartSessionRequest req) {
@@ -50,11 +49,19 @@ public class ChatController {
     }
 
     /**
+     * 获取会话状态（用于前端恢复对话界面）。
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<GetSessionResponse> getSession(@PathVariable String id) {
+        try {
+            return ResponseEntity.ok(service.getSession(id));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
      * 发送消息（用户回答），获取 LLM 的下一个问题。
-     *
-     * @param id  会话 ID
-     * @param req 包含用户回答文本
-     * @return LLM 回复 + ready 标志
      */
     @PostMapping("/{id}/messages")
     public ResponseEntity<MessageResponse> sendMessage(@PathVariable String id, @Valid @RequestBody SendMessageRequest req) {
@@ -67,15 +74,27 @@ public class ChatController {
     }
 
     /**
+     * 预览拆解结果：调用 LLM 生成任务草稿，不入库。
+     */
+    @PostMapping("/{id}/preview")
+    public ResponseEntity<PreviewResponse> preview(@PathVariable String id) {
+        try {
+            return ResponseEntity.ok(service.preview(id));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
      * 确认拆解：用精炼需求调用拆解服务，生成任务。
-     *
-     * @param id 会话 ID
-     * @return 生成的任务 ID
+     * 可携带用户在预览中修改后的 drafts。
      */
     @PostMapping("/{id}/decompose")
-    public ResponseEntity<DecomposeResponse> decompose(@PathVariable String id) {
+    public ResponseEntity<DecomposeResponse> decompose(@PathVariable String id,
+            @RequestBody(required = false) ConfirmDecomposeRequest req) {
         try {
-            DecomposeResponse resp = service.decompose(id);
+            var drafts = req != null ? req.drafts() : null;
+            DecomposeResponse resp = service.decompose(id, drafts);
             return ResponseEntity.ok(resp);
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();

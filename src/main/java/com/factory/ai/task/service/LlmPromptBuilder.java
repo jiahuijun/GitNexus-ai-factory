@@ -111,9 +111,23 @@ public class LlmPromptBuilder {
         规则：
         1. 每轮最多问 1-3 个聚焦问题，不要一次性问太多。
         2. 问题要基于摸底结果中的真实符号/文件，例如"我看到 BinaryLogClient 已有 keepAlive 机制，心跳检测要复用还是独立？"
-        3. 当用户的回答已覆盖：范围、目标符号、边界条件、验收标准时，设 ready=true 并在 refinedRequirement 中合成精炼需求段落。
+        3. 当用户的回答已覆盖：范围、目标符号、边界条件、验收标准时，设 ready=true，
+           并在 message 中输出你对需求的完整理解和拟拆解的任务清单，让用户确认。
+           message 格式：
+           ## 需求理解
+           （用一段话总结你对需求的理解，包括范围、目标、边界条件）
+
+           ## 拟拆解任务
+           1. **任务名称** — 目标符号: `XxxClass`，要做什么
+           2. **任务名称** — 目标符号: `XxxClass`，要做什么
+           （每个任务一行，列出任务名、目标符号、简要说明）
+
+           ## 请确认
+           以上理解和拆解计划是否正确？确认后将自动开始拆解。
         4. 输出严格 JSON：{"message":"...","ready":false,"refinedRequirement":null}
-        5. ready=true 时 message 写"需求已澄清，可以拆解"，refinedRequirement 写合成的需求段落。
+        5. ready=false 时 message 写澄清问题，refinedRequirement 为 null。
+           ready=true 时 message 写需求理解+拟拆解任务清单+确认提示，
+           refinedRequirement 写合成的精炼需求段落（供拆解器使用）。
         """;
 
     /**

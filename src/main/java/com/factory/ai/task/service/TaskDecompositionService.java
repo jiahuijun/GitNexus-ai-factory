@@ -80,24 +80,43 @@ public class TaskDecompositionService {
      */
     @Transactional
     public Long decompose(String requirement, String repo, Long adminId) {
+        return decompose(requirement, repo, adminId, null);
+    }
+
+    /**
+     * 拆解流水线（支持用户修改后的 drafts 覆盖）。
+     *
+     * <p>当 drafts 参数非 null 时，跳过 LLM splitTasks 调用，直接使用用户确认/修改后的草稿入库。
+     * 这支持"预览 → 用户编辑 → 确认入库"流程。</p>
+     *
+     * @param requirement 原始需求
+     * @param repo        仓库名
+     * @param adminId     管理员 ID
+     * @param drafts      用户修改后的草稿（null 时调 LLM 生成）
+     * @return 父任务 ID
+     */
+    @Transactional
+    public Long decompose(String requirement, String repo, Long adminId, List<LlmGateway.TaskDraft> drafts) {
         // 1. 建父任务
         Task task = new Task(requirement, adminId);
         taskMapper.insert(task);
 
-        // 2. query 摸底：获取相关符号与执行流，供 LLM 选取 targetSymbol
+        // 2. query 摸底：获取相关符号与执行流
         QueryResult queryResult = gitNexus.query(requirement, repo);
 
-        // 3. LLM 拆解：基于需求 + 摸底结果输出任务草稿
-        List<LlmGateway.TaskDraft> drafts = llm.splitTasks(requirement, queryResult);
+        // 3. LLM 拆解（或使用用户提供的草稿）
+        if (drafts == null) {
+            drafts = llm.splitTasks(requirement, queryResult);
+        }
 
-        // 3.5 空草稿早返回：摸底无相关符号或 LLM 判定无需拆解 → DECOMPOSING_FAILED，不建 step
+        // 3.5 空草稿早返回
         if (drafts.isEmpty()) {
             task.setStatus(TaskStatus.DECOMPOSING_FAILED);
             taskMapper.updateById(task);
             return task.getId();
         }
 
-        // 4. 建步骤实体（先存，拿到 ID 供后续派生依赖与聚合使用）
+        // 4. 建步骤实体
         List<TaskStep> stepList = new ArrayList<>();
         for (var d : drafts) {
             TaskStep s = new TaskStep(task.getId(), d.stepName(), d.targetSymbol());
@@ -106,21 +125,20 @@ public class TaskDecompositionService {
             stepList.add(s);
         }
 
-        // 5. 派生依赖（就地修改 dependsOnCount），返回依赖边集
+        // 5. 派生依赖
         var edges = derivationSvc.derive(stepList, repo);
         for (var edge : edges) {
             depMapper.insert(edge);
         }
 
-        // 6. 初始上下文聚合：为每个 step 拉 Prompt，并按依赖数设置状态
+        // 6. 上下文聚合 + 状态设置
         for (TaskStep s : stepList) {
             aggregationSvc.aggregate(s, repo, requirement);
-            // 依赖为 0 → READY 可认领；否则 PENDING 等待前驱完成
             s.setStatus(s.getDependsOnCount() == 0 ? TaskStepStatus.READY : TaskStepStatus.PENDING);
             stepMapper.updateById(s);
         }
 
-        // 7. 父任务就绪：有 needs_review 的 step → PARTIAL，否则 READY
+        // 7. 父任务就绪
         boolean anyReview = stepList.stream().anyMatch(TaskStep::isNeedsReview);
         task.setStatus(anyReview ? TaskStatus.PARTIAL : TaskStatus.READY);
         taskMapper.updateById(task);

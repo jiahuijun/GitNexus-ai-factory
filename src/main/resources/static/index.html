@@ -66,18 +66,30 @@
         .pagination .info { font-size: 13px; color: #666; margin-left: 8px; }
         /* Chat UI */
         .chat-messages { max-height: 450px; overflow-y: auto; padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 16px; }
-        .chat-bubble { max-width: 75%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; margin-bottom: 8px; word-wrap: break-word; }
+        .chat-bubble { max-width: 75%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.6; margin-bottom: 8px; word-wrap: break-word; }
         .chat-bubble.user { background: #e94560; color: #fff; margin-left: auto; border-bottom-right-radius: 4px; }
         .chat-bubble.assistant { background: #fff; color: #333; border: 1px solid #e0e0e0; border-bottom-left-radius: 4px; }
+        .chat-bubble.assistant h2 { font-size: 15px; margin: 8px 0 4px; }
+        .chat-bubble.assistant h3 { font-size: 14px; margin: 6px 0 3px; }
+        .chat-bubble.assistant p { margin: 4px 0; }
+        .chat-bubble.assistant ol, .chat-bubble.assistant ul { margin: 4px 0 4px 20px; }
+        .chat-bubble.assistant li { margin: 2px 0; }
+        .chat-bubble.assistant code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-family: monospace; font-size: 13px; }
+        .chat-bubble.assistant strong { font-weight: 700; }
         .chat-input-row { display: flex; gap: 8px; margin-bottom: 16px; }
         .chat-input-row input { flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        /* Preview modal */
+        .preview-card { border: 2px solid #e94560; }
+        .preview-step { background: #f8f9fa; border-radius: 6px; padding: 12px; margin-bottom: 10px; }
+        .preview-step h4 { font-size: 14px; margin-bottom: 6px; }
+        .preview-step .symbol { font-family: monospace; background: #e8e8e8; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+        .preview-detail { font-size: 13px; color: #555; margin-top: 6px; white-space: pre-wrap; }
     </style>
 </head>
 <body>
     <nav class="nav">
         <h1>AI Factory</h1>
         <a id="nav-tasks" class="active" onclick="showView('tasks')">任务列表</a>
-        <a id="nav-decompose" onclick="showView('decompose')">提交需求</a>
         <a id="nav-chat" onclick="showView('chat')">需求对话</a>
         <a id="nav-back" class="hidden" onclick="showView('tasks')">← 返回列表</a>
     </nav>
@@ -105,27 +117,6 @@
             </div>
         </div>
 
-        <!-- 提交需求视图 -->
-        <div id="view-decompose" class="hidden">
-            <div class="card">
-                <h2 style="margin-bottom: 20px;">提交需求 — 拆解为任务步骤</h2>
-                <div id="decompose-alert"></div>
-                <div class="form-group">
-                    <label>产品需求（自然语言描述）</label>
-                    <textarea id="decompose-requirement" placeholder="例如：给 BinaryLogClient 添加断线重连指数退避策略，可配置最大重试次数和初始退避间隔"></textarea>
-                </div>
-                <div class="form-group">
-                    <label>目标仓库（GitNexus 中索引的仓库名）</label>
-                    <input type="text" id="decompose-repo" placeholder="例如：mysql-binlog-connector-java" value="mysql-binlog-connector-java">
-                </div>
-                <div class="form-group">
-                    <label>管理员 ID</label>
-                    <input type="number" id="decompose-adminId" value="1" min="1">
-                </div>
-                <button class="btn btn-primary" onclick="submitDecompose()">提交拆解</button>
-            </div>
-        </div>
-
         <!-- 需求对话视图 -->
         <div id="view-chat" class="hidden">
             <div class="card" id="chat-start-card">
@@ -150,10 +141,22 @@
                 <div class="card">
                     <div class="chat-messages" id="chat-messages"></div>
                     <div class="chat-input-row">
-                        <input type="text" id="chat-input" placeholder="输入回答..." onkeypress="if(event.key==='Enter')sendChatMessage()">
+                        <textarea id="chat-input" placeholder="输入回答... (Enter 发送, Shift+Enter 换行)" rows="1" style="flex:1;padding:10px 14px;border:1px solid #ddd;border-radius:4px;font-size:14px;resize:none;font-family:inherit;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage()}"></textarea>
                         <button class="btn btn-primary" onclick="sendChatMessage()">发送</button>
                     </div>
-                    <button id="chat-confirm" class="btn btn-success hidden" onclick="confirmDecompose()">确认拆解</button>
+                    <button id="chat-confirm" class="btn btn-success hidden" onclick="previewDecompose()">查看拆解预览</button>
+                </div>
+            </div>
+
+            <!-- 拆解预览区域 -->
+            <div id="chat-preview" class="hidden">
+                <div class="card preview-card">
+                    <h2 style="margin-bottom: 16px;">拆解预览 — 请确认后入库</h2>
+                    <div id="preview-content"></div>
+                    <div style="margin-top: 16px; display: flex; gap: 12px;">
+                        <button class="btn btn-success" id="btn-confirm-decompose" onclick="confirmDecompose()">确认入库</button>
+                        <button class="btn btn-secondary" onclick="cancelPreview()">返回修改</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -172,7 +175,7 @@
 
         // === 视图切换 ===
         function showView(view) {
-            ['tasks', 'decompose', 'chat', 'detail'].forEach(v => {
+            ['tasks', 'chat', 'detail'].forEach(v => {
                 document.getElementById('view-' + v).classList.add('hidden');
             });
             document.getElementById('view-' + view).classList.remove('hidden');
@@ -181,10 +184,10 @@
                 document.getElementById('nav-tasks').classList.add('active');
                 document.getElementById('nav-back').classList.add('hidden');
                 loadTasks();
-            } else if (view === 'decompose') {
-                document.getElementById('nav-decompose').classList.add('active');
             } else if (view === 'chat') {
                 document.getElementById('nav-chat').classList.add('active');
+                // 尝试恢复会话
+                restoreChatSession();
             } else {
                 document.getElementById('nav-back').classList.remove('hidden');
             }
@@ -227,9 +230,7 @@
                 return;
             }
             let html = '';
-            // 上一页
             html += `<button ${page <= 1 ? 'disabled' : ''} onclick="goToPage(${page - 1})">上一页</button>`;
-            // 页码按钮（最多显示前后 2 页）
             const start = Math.max(1, page - 2);
             const end = Math.min(totalPages, page + 2);
             if (start > 1) {
@@ -243,7 +244,6 @@
                 if (end < totalPages - 1) html += '<span class="info">...</span>';
                 html += `<button onclick="goToPage(${totalPages})">${totalPages}</button>`;
             }
-            // 下一页
             html += `<button ${page >= totalPages ? 'disabled' : ''} onclick="goToPage(${page + 1})">下一页</button>`;
             html += `<span class="info">共 ${total} 条 / ${totalPages} 页</span>`;
             container.innerHTML = html;
@@ -286,7 +286,6 @@
 
         function goToStepPage(taskId, page) {
             stepCurrentPage[taskId] = page;
-            // 重新加载详情页的步骤列表
             loadStepPage(taskId, page);
         }
 
@@ -357,12 +356,10 @@
                     </div>
                 `;
 
-                // DAG 图
                 if (deps.length > 0) {
                     html += `<div class="card"><h3 style="margin-bottom:12px;">DAG 依赖关系</h3>${renderDAG(steps, deps)}</div>`;
                 }
 
-                // Steps 表
                 html += `
                     <div class="card">
                         <h3 style="margin-bottom:12px;">步骤列表（共 ${stepsData.total} 条）</h3>
@@ -405,17 +402,11 @@
 
         function renderStepActions(s) {
             let btns = '';
-            // 查看 Prompt 按钮
             btns += `<button class="btn btn-secondary btn-sm" onclick="togglePrompt(${s.id})">提示词</button>`;
-            // Claim 按钮
             if (s.status === 'READY') {
                 btns += `<button class="btn btn-warning btn-sm" onclick="claimStep(${s.id})">认领</button>`;
-            }
-            // Execute 按钮
-            if (s.status === 'READY') {
                 btns += `<button class="btn btn-success btn-sm" onclick="executeStep(${s.id})">执行</button>`;
             }
-            // Complete 按钮
             if (s.status === 'IN_PROGRESS') {
                 btns += `<button class="btn btn-primary btn-sm" onclick="completeStep(${s.id})">完成</button>`;
             }
@@ -432,7 +423,6 @@
                     const res = await fetch(`${API}/tasks/steps/${stepId}`);
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
                     const step = await res.json();
-                    // 显示所有字段
                     let html = '<div style="margin-bottom:12px;">';
                     html += `<div style="margin:4px 0;"><strong>步骤 ID:</strong> ${step.id}</div>`;
                     html += `<div style="margin:4px 0;"><strong>所属任务:</strong> ${step.taskId}</div>`;
@@ -445,7 +435,6 @@
                     html += `<div style="margin:4px 0;"><strong>需复核:</strong> ${step.needsReview}</div>`;
                     if (step.reaggregatedAt) html += `<div style="margin:4px 0;"><strong>重新聚合时间:</strong> ${step.reaggregatedAt}</div>`;
                     html += '</div>';
-
                     if (step.designDetail) {
                         html += `<div style="margin-top:12px;"><strong>设计详情</strong><div class="step-prompt" style="margin-top:4px;">${esc(step.designDetail)}</div></div>`;
                     }
@@ -469,7 +458,6 @@
             if (deps.length === 0) return '<p style="color:#999;">无依赖关系</p>';
             const stepMap = {};
             steps.forEach(s => stepMap[s.id] = s);
-            // 按依赖顺序排列
             const lines = deps.map(d => {
                 const from = stepMap[d.fromStepId];
                 const to = stepMap[d.toStepId];
@@ -480,37 +468,6 @@
                 </div>`;
             }).join('');
             return `<div>${lines}</div>`;
-        }
-
-        // === 提交需求 ===
-        async function submitDecompose() {
-            const requirement = document.getElementById('decompose-requirement').value.trim();
-            const repo = document.getElementById('decompose-repo').value.trim();
-            const adminId = parseInt(document.getElementById('decompose-adminId').value);
-            const alertDiv = document.getElementById('decompose-alert');
-
-            if (!requirement) {
-                alertDiv.innerHTML = '<div class="alert alert-error">请输入需求描述</div>';
-                return;
-            }
-            alertDiv.innerHTML = '<div class="alert alert-info">正在拆解...（可能需要 30-60 秒）</div>';
-
-            try {
-                const res = await fetch(`${API}/tasks/decompose`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ requirement, repo, adminId })
-                });
-                if (!res.ok) {
-                    const err = await res.json();
-                    throw new Error(err.message || `HTTP ${res.status}`);
-                }
-                const taskId = await res.json();
-                alertDiv.innerHTML = `<div class="alert alert-success">拆解成功！任务 ID: ${taskId} <button class="btn btn-primary btn-sm" onclick="showDetail(${taskId})">查看详情</button></div>`;
-                document.getElementById('decompose-requirement').value = '';
-            } catch (e) {
-                alertDiv.innerHTML = `<div class="alert alert-error">拆解失败: ${esc(e.message)}</div>`;
-            }
         }
 
         // === 步骤操作 ===
@@ -526,12 +483,9 @@
                 if (res.status === 409) { alert('认领失败：步骤已被认领或非 READY 状态'); return; }
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const step = await res.json();
-                // 显示 prompt
                 alert(`认领成功！步骤: ${step.stepName}\n\n提示词已在浏览器控制台输出。`);
                 console.log('生成提示词:\n' + step.generatedPrompt);
-                // 刷新详情
-                const taskId = step.taskId;
-                showDetail(taskId);
+                showDetail(step.taskId);
             } catch (e) {
                 alert('认领失败: ' + e.message);
             }
@@ -541,7 +495,6 @@
             const repo = prompt('输入仓库名:', 'mysql-binlog-connector-java');
             if (!repo) return;
             if (!confirm(`确认自动执行步骤 ${stepId}？\n（LLM 将生成代码并写入文件，约 30-60 秒）`)) return;
-            // 显示进度
             const btn = event.target;
             btn.disabled = true;
             btn.textContent = '执行中...';
@@ -557,9 +510,7 @@
                 } else {
                     alert('执行返回 false（认领失败或 detectChanges 未通过）');
                 }
-                // 刷新详情
                 const detailContent = document.getElementById('detail-content');
-                // 从当前页面提取 taskId
                 const titleEl = detailContent.querySelector('h2');
                 if (titleEl) {
                     const match = titleEl.textContent.match(/#(\d+)/);
@@ -599,8 +550,89 @@
             }
         }
 
+        // === Markdown 渲染 ===
+        function renderMarkdown(text) {
+            if (!text) return '';
+            // 先转义 HTML 防止 XSS
+            let html = esc(text);
+            // 代码块 ```
+            html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre style="background:#f0f0f0;padding:8px;border-radius:4px;overflow-x:auto;margin:6px 0;"><code>$2</code></pre>');
+            // 标题 ## ###
+            html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+            html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+            // 粗体 **text**
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            // 行内代码 `code`
+            html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+            // 有序列表 1. 2. 3.
+            html = html.replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>');
+            html = html.replace(/(<li>.*<\/li>\n?)+/g, m => '<ol>' + m + '</ol>');
+            // 无序列表 - *
+            html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+            // 段落换行（连续两个换行 → 段落分隔）
+            html = html.replace(/\n\n/g, '</p><p>');
+            // 单个换行 → <br>
+            html = html.replace(/\n/g, '<br>');
+            // 清理列表内的多余 <br>
+            html = html.replace(/<br>(<\/li>)/g, '$1');
+            html = html.replace(/(<\/li>)<br>/g, '$1');
+            html = html.replace(/(<ol>)<br>/g, '$1');
+            html = html.replace(/<br>(<\/ol>)/g, '$1');
+            // 清理标题后的 <br>
+            html = html.replace(/(<\/h[23]>)<br>/g, '$1');
+            return '<p>' + html + '</p>';
+        }
+
         // === 需求对话 ===
         let chatSessionId = null;
+
+        // 保存会话 ID 到 localStorage
+        function saveChatSession() {
+            if (chatSessionId) {
+                localStorage.setItem('chatSessionId', chatSessionId);
+            } else {
+                localStorage.removeItem('chatSessionId');
+            }
+        }
+
+        // 恢复会话
+        async function restoreChatSession() {
+            const savedId = localStorage.getItem('chatSessionId');
+            if (!savedId) return;
+            try {
+                const res = await fetch(`${API}/chat/sessions/${savedId}`);
+                if (!res.ok) {
+                    // 会话过期，清理
+                    localStorage.removeItem('chatSessionId');
+                    return;
+                }
+                const data = await res.json();
+                // 如果已拆解，跳转到任务详情
+                if (data.state === 'DECOMPOSED' && data.taskId) {
+                    localStorage.removeItem('chatSessionId');
+                    showDetail(data.taskId);
+                    return;
+                }
+                // 恢复对话界面
+                chatSessionId = data.sessionId;
+                document.getElementById('chat-start-card').classList.add('hidden');
+                document.getElementById('chat-conversation').classList.remove('hidden');
+                document.getElementById('chat-messages').innerHTML = '';
+                // 渲染历史消息
+                if (data.history && data.history.length > 0) {
+                    data.history.forEach(msg => {
+                        appendChatBubble(msg.role, msg.text);
+                    });
+                }
+                // 如果已 ready，显示预览按钮
+                if (data.ready) {
+                    document.getElementById('chat-confirm').classList.remove('hidden');
+                }
+            } catch (e) {
+                console.error('Failed to restore chat session:', e);
+                localStorage.removeItem('chatSessionId');
+            }
+        }
 
         async function startChatSession() {
             const requirement = document.getElementById('chat-requirement').value.trim();
@@ -626,13 +658,11 @@
                 }
                 const data = await res.json();
                 chatSessionId = data.sessionId;
+                saveChatSession();
                 alertDiv.innerHTML = '';
 
-                // 切换到对话界面
                 document.getElementById('chat-start-card').classList.add('hidden');
                 document.getElementById('chat-conversation').classList.remove('hidden');
-
-                // 渲染第一个问题
                 document.getElementById('chat-messages').innerHTML = '';
                 appendChatBubble('assistant', data.firstQuestion);
 
@@ -653,7 +683,6 @@
             appendChatBubble('user', text);
             input.value = '';
 
-            // 禁用发送按钮，等待 LLM 回复
             const sendBtn = input.nextElementSibling;
             sendBtn.disabled = true;
             sendBtn.textContent = '思考中...';
@@ -667,6 +696,7 @@
                 if (res.status === 404) {
                     appendChatBubble('assistant', '会话已过期，请重新开始对话。');
                     chatSessionId = null;
+                    localStorage.removeItem('chatSessionId');
                     return;
                 }
                 if (!res.ok) {
@@ -680,27 +710,28 @@
                     document.getElementById('chat-confirm').classList.remove('hidden');
                 }
             } catch (e) {
-                appendChatBubble('assistant', `（错误）${esc(e.message)}`);
+                appendChatBubble('assistant', `（错误）${e.message}`);
             } finally {
                 sendBtn.disabled = false;
                 sendBtn.textContent = '发送';
             }
         }
 
-        async function confirmDecompose() {
+        // 拆解预览
+        async function previewDecompose() {
             if (!chatSessionId) return;
-            if (!confirm('确认拆解？将基于对话中澄清的需求生成任务步骤。')) return;
-
             const btn = document.getElementById('chat-confirm');
             btn.disabled = true;
-            btn.textContent = '拆解中...';
+            btn.textContent = '生成预览中...';
 
             try {
-                const res = await fetch(`${API}/chat/sessions/${chatSessionId}/decompose`, {
+                const res = await fetch(`${API}/chat/sessions/${chatSessionId}/preview`, {
                     method: 'POST'
                 });
                 if (res.status === 404) {
                     alert('会话已过期，请重新开始对话。');
+                    chatSessionId = null;
+                    localStorage.removeItem('chatSessionId');
                     return;
                 }
                 if (!res.ok) {
@@ -708,12 +739,92 @@
                     throw new Error(err.message || `HTTP ${res.status}`);
                 }
                 const data = await res.json();
-                alert(`拆解成功！任务 ID: ${data.taskId}`);
-                // 重置对话界面
+                // 渲染预览
+                const previewContent = document.getElementById('preview-content');
+                if (!data.drafts || data.drafts.length === 0) {
+                    previewContent.innerHTML = '<div class="alert alert-error">LLM 未生成任何任务草稿，请补充更多需求细节后重试。</div>';
+                    document.getElementById('chat-preview').classList.remove('hidden');
+                    return;
+                }
+                previewContent.innerHTML = `
+                    <p style="margin-bottom:12px;">共 <strong>${data.drafts.length}</strong> 个任务步骤（可直接编辑）：</p>
+                    <div id="preview-drafts">
+                    ${data.drafts.map((d, i) => `
+                        <div class="preview-step" data-index="${i}">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                                <strong style="min-width:24px;">${i + 1}.</strong>
+                                <input class="preview-stepName" value="${esc(d.stepName)}" style="flex:1;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:14px;font-weight:600;" placeholder="步骤名">
+                            </div>
+                            <div style="margin-bottom:6px;">
+                                <label style="font-size:12px;color:#888;">目标符号:</label>
+                                <input class="preview-symbol" value="${esc(d.targetSymbol)}" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-family:monospace;font-size:13px;margin-top:2px;" placeholder="目标符号">
+                            </div>
+                            <div>
+                                <label style="font-size:12px;color:#888;">设计详情:</label>
+                                <textarea class="preview-detail" style="width:100%;min-height:120px;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:13px;font-family:inherit;resize:vertical;margin-top:2px;white-space:pre-wrap;" placeholder="设计详情">${esc(d.designDetail)}</textarea>
+                            </div>
+                        </div>
+                    `).join('')}
+                    </div>
+                `;
+                document.getElementById('chat-preview').classList.remove('hidden');
+                // 滚动到预览区域
+                document.getElementById('chat-preview').scrollIntoView({ behavior: 'smooth' });
+            } catch (e) {
+                alert('预览失败: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '查看拆解预览';
+            }
+        }
+
+        function cancelPreview() {
+            document.getElementById('chat-preview').classList.add('hidden');
+        }
+
+        async function confirmDecompose() {
+            if (!chatSessionId) return;
+            const btn = document.getElementById('btn-confirm-decompose');
+            btn.disabled = true;
+            btn.textContent = '入库中...';
+
+            try {
+                // 收集用户编辑后的 drafts
+                const draftElements = document.querySelectorAll('#preview-drafts .preview-step');
+                const drafts = Array.from(draftElements).map(el => ({
+                    stepName: el.querySelector('.preview-stepName').value.trim(),
+                    targetSymbol: el.querySelector('.preview-symbol').value.trim(),
+                    designDetail: el.querySelector('.preview-detail').value.trim()
+                })).filter(d => d.stepName && d.targetSymbol);
+
+                if (drafts.length === 0) {
+                    alert('请至少保留一个有效的任务步骤（需含步骤名和目标符号）。');
+                    return;
+                }
+
+                const res = await fetch(`${API}/chat/sessions/${chatSessionId}/decompose`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drafts })
+                });
+                if (res.status === 404) {
+                    alert('会话已过期，请重新开始对话。');
+                    chatSessionId = null;
+                    localStorage.removeItem('chatSessionId');
+                    return;
+                }
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.message || `HTTP ${res.status}`);
+                }
+                const data = await res.json();
+                // 清理会话状态
                 chatSessionId = null;
+                localStorage.removeItem('chatSessionId');
                 document.getElementById('chat-start-card').classList.remove('hidden');
                 document.getElementById('chat-conversation').classList.add('hidden');
                 document.getElementById('chat-confirm').classList.add('hidden');
+                document.getElementById('chat-preview').classList.add('hidden');
                 document.getElementById('chat-requirement').value = '';
                 // 跳转到任务详情
                 showDetail(data.taskId);
@@ -721,7 +832,7 @@
                 alert('拆解失败: ' + e.message);
             } finally {
                 btn.disabled = false;
-                btn.textContent = '确认拆解';
+                btn.textContent = '确认入库';
             }
         }
 
@@ -729,7 +840,11 @@
             const container = document.getElementById('chat-messages');
             const bubble = document.createElement('div');
             bubble.className = `chat-bubble ${role}`;
-            bubble.textContent = text;
+            if (role === 'assistant') {
+                bubble.innerHTML = renderMarkdown(text);
+            } else {
+                bubble.textContent = text;
+            }
             container.appendChild(bubble);
             container.scrollTop = container.scrollHeight;
         }

@@ -10,3 +10,4 @@ repos/
 # Local environment config
 *.env
 application-local.yml
+backend.log

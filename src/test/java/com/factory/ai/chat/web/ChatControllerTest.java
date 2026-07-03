@@ -89,7 +89,7 @@ class ChatControllerTest {
 
     @Test
     void decomposeReturns200() throws Exception {
-        when(service.decompose(eq("s1")))
+        when(service.decompose(eq("s1"), any()))
             .thenReturn(new DecomposeResponse(42L));
 
         mvc.perform(post("/chat/sessions/s1/decompose"))
@@ -99,7 +99,7 @@ class ChatControllerTest {
 
     @Test
     void decomposeReturns404WhenSessionExpired() throws Exception {
-        when(service.decompose(eq("expired")))
+        when(service.decompose(eq("expired"), any()))
             .thenThrow(new java.util.NoSuchElementException("not found"));
 
         mvc.perform(post("/chat/sessions/expired/decompose"))

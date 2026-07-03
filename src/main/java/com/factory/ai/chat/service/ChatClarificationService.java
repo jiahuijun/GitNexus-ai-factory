@@ -4,7 +4,9 @@ import com.factory.ai.chat.session.ChatMessage;
 import com.factory.ai.chat.session.ChatSession;
 import com.factory.ai.chat.session.ChatSessionStore;
 import com.factory.ai.chat.web.dto.DecomposeResponse;
+import com.factory.ai.chat.web.dto.GetSessionResponse;
 import com.factory.ai.chat.web.dto.MessageResponse;
+import com.factory.ai.chat.web.dto.PreviewResponse;
 import com.factory.ai.chat.web.dto.StartSessionResponse;
 import com.factory.ai.gitnexus.GitNexusClient;
 import com.factory.ai.gitnexus.dto.QueryResult;
@@ -96,22 +98,61 @@ public class ChatClarificationService {
 
     /**
      * 确认拆解：用精炼需求（或回退到原始需求）调用拆解服务。
+     * 若用户提供了修改后的 drafts，跳过 LLM 直接入库。
      *
      * @param sessionId 会话 ID
+     * @param drafts    用户修改后的草稿（null 时由拆解服务调 LLM 生成）
      * @return 生成的任务 ID
      * @throws NoSuchElementException 会话不存在或已过期
      */
-    public DecomposeResponse decompose(String sessionId) {
+    public DecomposeResponse decompose(String sessionId, List<LlmGateway.TaskDraft> drafts) {
         ChatSession session = store.get(sessionId);
         if (session == null) throw new NoSuchElementException("Session expired or not found");
-        // 优先使用精炼需求，回退到原始需求
         String requirement = session.getRefinedRequirement() != null
             ? session.getRefinedRequirement()
             : session.getOriginalRequirement();
-        Long taskId = decompService.decompose(requirement, session.getRepo(), session.getAdminId());
+        Long taskId = decompService.decompose(requirement, session.getRepo(), session.getAdminId(), drafts);
         session.setState("DECOMPOSED");
         session.setTaskId(taskId);
         store.save(session);
         return new DecomposeResponse(taskId);
+    }
+
+    /**
+     * 获取会话状态（用于前端恢复对话界面）。
+     *
+     * @param sessionId 会话 ID
+     * @return 会话状态快照
+     * @throws NoSuchElementException 会话不存在或已过期
+     */
+    public GetSessionResponse getSession(String sessionId) {
+        ChatSession session = store.get(sessionId);
+        if (session == null) throw new NoSuchElementException("Session expired or not found");
+        boolean ready = session.getRefinedRequirement() != null;
+        return new GetSessionResponse(
+            session.getSessionId(),
+            session.getOriginalRequirement(),
+            session.getHistory(),
+            ready,
+            session.getState(),
+            session.getTaskId()
+        );
+    }
+
+    /**
+     * 预览拆解结果：调用 LLM splitTasks 但不入库，供用户确认。
+     *
+     * @param sessionId 会话 ID
+     * @return 任务草稿列表
+     * @throws NoSuchElementException 会话不存在或已过期
+     */
+    public PreviewResponse preview(String sessionId) {
+        ChatSession session = store.get(sessionId);
+        if (session == null) throw new NoSuchElementException("Session expired or not found");
+        String requirement = session.getRefinedRequirement() != null
+            ? session.getRefinedRequirement()
+            : session.getOriginalRequirement();
+        List<LlmGateway.TaskDraft> drafts = llm.splitTasks(requirement, session.getQueryResult());
+        return new PreviewResponse(drafts);
     }
 }

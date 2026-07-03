@@ -104,13 +104,13 @@ class ChatClarificationServiceTest {
         ChatSession session = new ChatSession("s1", "原始需求", "repo", 1L, queryResult);
         session.setRefinedRequirement("精炼需求：加心跳检测，指数退避");
         when(store.get("s1")).thenReturn(session);
-        when(decompService.decompose(any(), any(), any())).thenReturn(42L);
+        when(decompService.decompose(any(), any(), any(), any())).thenReturn(42L);
 
         // Act
-        var resp = service.decompose("s1");
+        var resp = service.decompose("s1", null);
 
         // Assert
-        verify(decompService, times(1)).decompose("精炼需求：加心跳检测，指数退避", "repo", 1L);
+        verify(decompService, times(1)).decompose("精炼需求：加心跳检测，指数退避", "repo", 1L, null);
         assertEquals(42L, resp.taskId());
         assertEquals("DECOMPOSED", session.getState());
         assertEquals(42L, session.getTaskId());
@@ -123,13 +123,13 @@ class ChatClarificationServiceTest {
         ChatSession session = new ChatSession("s1", "原始需求", "repo", 1L, queryResult);
         // 不设置 refinedRequirement
         when(store.get("s1")).thenReturn(session);
-        when(decompService.decompose(any(), any(), any())).thenReturn(7L);
+        when(decompService.decompose(any(), any(), any(), any())).thenReturn(7L);
 
         // Act
-        var resp = service.decompose("s1");
+        var resp = service.decompose("s1", null);
 
         // Assert
-        verify(decompService, times(1)).decompose("原始需求", "repo", 1L);
+        verify(decompService, times(1)).decompose("原始需求", "repo", 1L, null);
         assertEquals(7L, resp.taskId());
     }
 
@@ -142,6 +142,6 @@ class ChatClarificationServiceTest {
     @Test
     void decomposeThrowsWhenSessionExpired() {
         when(store.get("expired")).thenReturn(null);
-        assertThrows(java.util.NoSuchElementException.class, () -> service.decompose("expired"));
+        assertThrows(java.util.NoSuchElementException.class, () -> service.decompose("expired", null));
     }
 }
