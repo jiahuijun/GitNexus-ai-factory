@@ -257,6 +257,35 @@ public class TaskController {
     }
 
     /**
+     * 编辑已生成步骤的字段（stepName / targetSymbol / targetFile / designDetail / generatedPrompt / needsReview）。
+     *
+     * <p>用户可在任务详情页修改步骤内容，例如调整目标符号、补充设计详情或修改提示词。
+     * 使用 MyBatis-Plus 的 {@code updateById} 配合 {@code @Version} 乐观锁，
+     * 若版本号不匹配（被其他人修改过）则返回 409 Conflict。</p>
+     *
+     * @param stepId 步骤 ID
+     * @param req    更新请求体
+     * @return 200 OK + 更新后的 TaskStep；404 Not Found（步骤不存在）；409 Conflict（版本冲突）
+     */
+    @PutMapping("/steps/{stepId}")
+    public ResponseEntity<TaskStep> updateStep(@PathVariable Long stepId, @Valid @RequestBody UpdateStepRequest req) {
+        TaskStep step = stepMapper.selectById(stepId);
+        if (step == null) return ResponseEntity.notFound().build();
+        step.setStepName(req.stepName());
+        step.setTargetSymbol(req.targetSymbol() != null ? req.targetSymbol() : "");
+        step.setTargetFile(req.targetFile() != null ? req.targetFile() : "");
+        step.setDesignDetail(req.designDetail());
+        step.setGeneratedPrompt(req.generatedPrompt());
+        step.setNeedsReview(req.needsReview());
+        int rows = stepMapper.updateById(step);
+        if (rows == 0) {
+            // 乐观锁版本不匹配，说明步骤已被其他人修改
+            return ResponseEntity.status(409).build();
+        }
+        return ResponseEntity.ok(stepMapper.selectById(stepId));
+    }
+
+    /**
      * 全局异常处理器：将上游（GitNexus / LLM）失败统一映射为 503 Service Unavailable。
      *
      * <p>「不降级」策略：当 {@link GitNexusException} 或 {@link LlmException} 抛出时，

@@ -48,6 +48,8 @@
         .step-prompt { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; padding: 12px;
             font-family: "Consolas", monospace; font-size: 13px; white-space: pre-wrap; max-height: 400px;
             overflow-y: auto; margin-top: 8px; }
+        .form-input { padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; font-family: inherit; }
+        .form-input:focus { outline: none; border-color: #e94560; }
         .dag-svg { width: 100%; min-height: 200px; background: #fafafa; border: 1px solid #eee; border-radius: 4px; }
         .status-filter { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
         .status-filter button { padding: 4px 12px; border: 1px solid #ddd; background: #fff; border-radius: 12px; font-size: 12px; cursor: pointer; }
@@ -402,7 +404,7 @@
 
         function renderStepActions(s) {
             let btns = '';
-            btns += `<button class="btn btn-secondary btn-sm" onclick="togglePrompt(${s.id})">提示词</button>`;
+            btns += `<button class="btn btn-secondary btn-sm" onclick="togglePrompt(${s.id})">详情/编辑</button>`;
             if (s.status === 'READY') {
                 btns += `<button class="btn btn-warning btn-sm" onclick="claimStep(${s.id})">认领</button>`;
                 btns += `<button class="btn btn-success btn-sm" onclick="executeStep(${s.id})">执行</button>`;
@@ -424,32 +426,69 @@
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
                     const step = await res.json();
                     let html = '<div style="margin-bottom:12px;">';
-                    html += `<div style="margin:4px 0;"><strong>步骤 ID:</strong> ${step.id}</div>`;
-                    html += `<div style="margin:4px 0;"><strong>所属任务:</strong> ${step.taskId}</div>`;
-                    html += `<div style="margin:4px 0;"><strong>步骤名:</strong> ${esc(step.stepName)}</div>`;
-                    html += `<div style="margin:4px 0;"><strong>目标符号:</strong> ${esc(step.targetSymbol)}</div>`;
-                    html += `<div style="margin:4px 0;"><strong>目标文件:</strong> ${esc(step.targetFile)}</div>`;
-                    html += `<div style="margin:4px 0;"><strong>状态:</strong> <span class="badge badge-${step.status}">${statusLabel(step.status)}</span></div>`;
-                    html += `<div style="margin:4px 0;"><strong>认领人:</strong> ${step.assigneeId || '-'}</div>`;
-                    html += `<div style="margin:4px 0;"><strong>待解锁数:</strong> ${step.dependsOnCount}</div>`;
-                    html += `<div style="margin:4px 0;"><strong>需复核:</strong> ${step.needsReview}</div>`;
-                    if (step.reaggregatedAt) html += `<div style="margin:4px 0;"><strong>重新聚合时间:</strong> ${step.reaggregatedAt}</div>`;
+                    html += `<div style="margin:4px 0;"><strong>步骤 ID:</strong> ${step.id} | <strong>所属任务:</strong> ${step.taskId} | <strong>状态:</strong> <span class="badge badge-${step.status}">${statusLabel(step.status)}</span> | <strong>认领人:</strong> ${step.assigneeId || '-'} | <strong>待解锁:</strong> ${step.dependsOnCount}</div>`;
                     html += '</div>';
-                    if (step.designDetail) {
-                        html += `<div style="margin-top:12px;"><strong>设计详情</strong><div class="step-prompt" style="margin-top:4px;">${esc(step.designDetail)}</div></div>`;
-                    }
-                    if (step.generatedPrompt) {
-                        html += `<div style="margin-top:12px;"><strong>生成提示词</strong><div class="step-prompt" style="margin-top:4px;">${esc(step.generatedPrompt)}</div></div>`;
-                    }
+                    // 可编辑字段
+                    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">';
+                    html += `<div><label style="font-size:12px;color:#666;">步骤名</label><input id="edit-stepName-${stepId}" class="form-input" value="${esc(step.stepName)}" style="width:100%;"></div>`;
+                    html += `<div><label style="font-size:12px;color:#666;">目标符号</label><input id="edit-targetSymbol-${stepId}" class="form-input" value="${esc(step.targetSymbol)}" style="width:100%;"></div>`;
+                    html += `<div><label style="font-size:12px;color:#666;">目标文件</label><input id="edit-targetFile-${stepId}" class="form-input" value="${esc(step.targetFile)}" style="width:100%;"></div>`;
+                    html += `<div><label style="font-size:12px;color:#666;">需复核</label><br><input id="edit-needsReview-${stepId}" type="checkbox" ${step.needsReview ? 'checked' : ''}></div>`;
+                    html += '</div>';
+                    html += `<div style="margin-bottom:8px;"><label style="font-size:12px;color:#666;">设计详情</label><textarea id="edit-designDetail-${stepId}" class="form-input" style="width:100%;min-height:80px;">${esc(step.designDetail || '')}</textarea></div>`;
+                    html += `<div style="margin-bottom:8px;"><label style="font-size:12px;color:#666;">生成提示词</label><textarea id="edit-generatedPrompt-${stepId}" class="form-input" style="width:100%;min-height:100px;">${esc(step.generatedPrompt || '')}</textarea></div>`;
+                    // 只读字段
                     if (step.contextSnapshot) {
-                        html += `<div style="margin-top:12px;"><strong>上下文快照</strong><div class="step-prompt" style="margin-top:4px;">${esc(step.contextSnapshot)}</div></div>`;
+                        html += `<div style="margin-top:8px;"><strong>上下文快照</strong><div class="step-prompt" style="margin-top:4px;">${esc(step.contextSnapshot)}</div></div>`;
                     }
+                    if (step.reaggregatedAt) html += `<div style="margin:4px 0;font-size:12px;color:#999;">重新聚合时间: ${step.reaggregatedAt}</div>`;
+                    // 保存按钮
+                    html += `<div style="margin-top:8px;"><button class="btn btn-primary" onclick="saveStep(${stepId})">保存修改</button> <span id="save-status-${stepId}" style="font-size:13px;"></span></div>`;
                     content.innerHTML = html;
                 } catch (e) {
                     content.innerHTML = `<em style="color:red;">加载失败: ${esc(e.message)}</em>`;
                 }
             } else {
                 row.classList.add('hidden');
+            }
+        }
+
+        async function saveStep(stepId) {
+            const status = document.getElementById(`save-status-${stepId}`);
+            status.textContent = '保存中...';
+            status.style.color = '#999';
+            const body = {
+                stepName: document.getElementById(`edit-stepName-${stepId}`).value,
+                targetSymbol: document.getElementById(`edit-targetSymbol-${stepId}`).value,
+                targetFile: document.getElementById(`edit-targetFile-${stepId}`).value,
+                designDetail: document.getElementById(`edit-designDetail-${stepId}`).value,
+                generatedPrompt: document.getElementById(`edit-generatedPrompt-${stepId}`).value,
+                needsReview: document.getElementById(`edit-needsReview-${stepId}`).checked
+            };
+            try {
+                const res = await fetch(`${API}/tasks/steps/${stepId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (res.ok) {
+                    status.textContent = '保存成功';
+                    status.style.color = '#27ae60';
+                    setTimeout(() => { status.textContent = ''; }, 3000);
+                } else if (res.status === 409) {
+                    status.textContent = '保存失败：步骤已被其他人修改，请刷新后重试';
+                    status.style.color = '#e94560';
+                } else if (res.status === 404) {
+                    status.textContent = '步骤不存在';
+                    status.style.color = '#e94560';
+                } else {
+                    const err = await res.text();
+                    status.textContent = `保存失败: ${err}`;
+                    status.style.color = '#e94560';
+                }
+            } catch (e) {
+                status.textContent = `保存失败: ${e.message}`;
+                status.style.color = '#e94560';
             }
         }
 

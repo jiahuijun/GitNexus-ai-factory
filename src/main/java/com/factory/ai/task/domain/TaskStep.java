@@ -120,6 +120,9 @@ public class TaskStep {
     /** @return 目标代码符号 */
     public String getTargetSymbol() { return targetSymbol; }
 
+    /** @param s 目标代码符号 */
+    public void setTargetSymbol(String s) { this.targetSymbol = s; }
+
     /** @return 目标文件路径 */
     public String getTargetFile() { return targetFile; }
 
@@ -188,6 +191,9 @@ public class TaskStep {
 
     /** @return 步骤名称 */
     public String getStepName() { return stepName; }
+
+    /** @param s 步骤名称 */
+    public void setStepName(String s) { this.stepName = s; }
 
     /** @return 认领人 ID */
     public Long getAssigneeId() { return assigneeId; }
