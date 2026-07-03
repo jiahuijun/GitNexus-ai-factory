@@ -150,6 +150,10 @@
 
             <div id="chat-conversation" class="hidden">
                 <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <span style="font-size: 14px; color: #666;">对话进行中</span>
+                        <button class="btn btn-secondary btn-sm" onclick="abandonChatSession()">废弃并新建需求</button>
+                    </div>
                     <div class="chat-messages" id="chat-messages"></div>
                     <div class="chat-input-row">
                         <textarea id="chat-input" placeholder="输入回答... (Enter 发送, Shift+Enter 换行)" rows="1" style="flex:1;padding:10px 14px;border:1px solid #ddd;border-radius:4px;font-size:14px;resize:none;font-family:inherit;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage()}"></textarea>
@@ -640,6 +644,22 @@
             } else {
                 localStorage.removeItem('chatSessionId');
             }
+        }
+
+        // 废弃当前会话，回到新建需求表单
+        function abandonChatSession() {
+            if (!confirm('确定废弃当前对话？已输入的需求和回答将不再保留。')) return;
+            chatSessionId = null;
+            localStorage.removeItem('chatSessionId');
+            // 重置 UI：隐藏对话区/预览区，显示新建表单
+            document.getElementById('chat-conversation').classList.add('hidden');
+            document.getElementById('chat-preview').classList.add('hidden');
+            document.getElementById('chat-confirm').classList.add('hidden');
+            document.getElementById('chat-start-card').classList.remove('hidden');
+            // 清空输入和消息
+            document.getElementById('chat-messages').innerHTML = '';
+            document.getElementById('chat-input').value = '';
+            document.getElementById('chat-requirement').value = '';
         }
 
         // 恢复会话
