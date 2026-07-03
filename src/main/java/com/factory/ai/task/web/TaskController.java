@@ -15,6 +15,8 @@ import com.factory.ai.task.service.TaskDecompositionService;
 import com.factory.ai.task.service.TaskExecutionService;
 import com.factory.ai.task.web.dto.*;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -40,6 +42,8 @@ import java.util.NoSuchElementException;
 @RestController
 @RequestMapping("/tasks")
 public class TaskController {
+
+    private static final Logger log = LoggerFactory.getLogger(TaskController.class);
 
     private final TaskDecompositionService decomp;
     private final TaskClaimService claim;
@@ -268,6 +272,7 @@ public class TaskController {
      */
     @ExceptionHandler({GitNexusException.class, LlmException.class})
     public ResponseEntity<ErrorResponse> onUpstreamFailure(RuntimeException e) {
+        log.error("Upstream failure in task controller: {}", e.getMessage(), e);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
             .body(new ErrorResponse("UPSTREAM_UNAVAILABLE", e.getMessage()));
     }
@@ -284,6 +289,7 @@ public class TaskController {
             if (sb.length() > 0) sb.append("; ");
             sb.append(fe.getField()).append(": ").append(fe.getDefaultMessage());
         }
+        log.warn("Validation failed in task controller: {}", sb);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(new ErrorResponse("VALIDATION_FAILED", sb.toString()));
     }

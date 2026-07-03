@@ -8,7 +8,10 @@ import io.modelcontextprotocol.spec.McpSchema.CallToolRequest;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.Content;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -24,7 +27,7 @@ import java.util.Map;
  * {@link SymbolContext}、{@link ImpactResult}）。
  *
  * <p>仅当 {@code factory.clients.real.enabled=true} 时激活，确保测试 profile
- * （关闭了 Spring AI MCP 自动配置）不受影响，从而做到“真实客户端”与“测试桩”
+ * （关闭了 Spring AI MCP 自动配置）不受影响，从而做到"真实客户端"与"测试桩"
  * 在同一代码库中隔离共存。
  *
  * <p>核心职责：
@@ -39,6 +42,8 @@ import java.util.Map;
 @Service
 @ConditionalOnProperty(name = "factory.clients.real.enabled", havingValue = "true")
 public class SpringAiMcpGitNexusClient implements GitNexusClient {
+
+    private static final Logger log = LoggerFactory.getLogger(SpringAiMcpGitNexusClient.class);
 
     /** MCP 同步客户端，由 Spring AI 自动配置注入；封装了与 GitNexus 服务的 JSON-RPC 通信。 */
     private final McpSyncClient mcpClient;
@@ -178,11 +183,11 @@ public class SpringAiMcpGitNexusClient implements GitNexusClient {
     // --- internals ---
 
     /**
-     * 统一的 MCP {@code callTool} 调用与响应解析入口。
+     * 统一的 MCP {@code callTool} 调用与响应解析入口（带自动重连）。
      *
-     * <p>封装三步：① 发起 JSON-RPC 调用；② 检测服务端错误标志；
-     * ③ 将文本响应解析为 {@link JsonNode}。任何异常均包装为
-     * {@link GitNexusException} 抛出，保证“快速失败”语义不被吞掉。
+     * <p>封装四步：① 发起 JSON-RPC 调用；② 失败时尝试重新初始化 MCP 连接并重试一次；
+     * ③ 检测服务端错误标志；④ 将文本响应解析为 {@link JsonNode}。
+     * 任何异常均包装为 {@link GitNexusException} 抛出。</p>
      *
      * @param toolName MCP 工具名（如 "query"、"context"）
      * @param args     传给工具的参数映射
@@ -191,21 +196,61 @@ public class SpringAiMcpGitNexusClient implements GitNexusClient {
      */
     private JsonNode callTool(String toolName, Map<String, Object> args) {
         try {
+            return callToolInternal(toolName, args);
+        } catch (Exception e) {
+            // 第一次调用失败，尝试重新初始化 MCP 连接后重试一次
+            log.warn("MCP call '{}' failed, attempting reconnect and retry: {}", toolName, e.getMessage());
+            try {
+                mcpClient.initialize();
+                log.info("MCP reconnect successful, retrying tool '{}'", toolName);
+            } catch (Exception initEx) {
+                log.error("MCP reconnect failed for tool '{}': {}", toolName, initEx.getMessage());
+                throw new GitNexusException("MCP tool '" + toolName + "' call failed (reconnect also failed)", e);
+            }
+            try {
+                return callToolInternal(toolName, args);
+            } catch (Exception retryEx) {
+                log.error("MCP retry also failed for tool '{}': {}", toolName, retryEx.getMessage());
+                throw new GitNexusException("MCP tool '" + toolName + "' call failed after retry", retryEx);
+            }
+        }
+    }
+
+    /**
+     * 实际执行 MCP callTool 并解析响应（不含重连逻辑）。
+     */
+    private JsonNode callToolInternal(String toolName, Map<String, Object> args) {
+        try {
             CallToolResult result = mcpClient.callTool(new CallToolRequest(toolName, args));
-            // MCP 协议层：result.isError() 为 true 表示服务端业务错误（如工具不存在、参数非法），
-            // 此时 content 中通常含错误说明文本；需要立即抛出而非继续解析。
             if (result.isError() != null && result.isError()) {
                 throw new GitNexusException("MCP tool '" + toolName + "' returned error: " + extractText(result));
             }
             String text = extractText(result);
-            // 将 MCP 文本内容解析为 JSON 树；后续方法用 path() 做安全导航避免 NPE。
             return mapper.readTree(text);
         } catch (GitNexusException e) {
-            // 已经是 GitNexusException 则原样上抛，避免双重包装丢失原始信息。
             throw e;
         } catch (Exception e) {
-            // 包装 IO/JSON 解析等非预期异常，保留 cause 以便排查。
             throw new GitNexusException("MCP tool '" + toolName + "' call failed", e);
+        }
+    }
+
+    /**
+     * 定时心跳：每 5 分钟 ping 一次 MCP 服务端，保持会话活跃。
+     * 防止长时间空闲后 MCP 连接过期导致 "Server not initialized" 错误。
+     */
+    @Scheduled(fixedDelay = 300000) // 5 分钟
+    public void mcpHeartbeat() {
+        try {
+            mcpClient.ping();
+            log.debug("MCP heartbeat OK");
+        } catch (Exception e) {
+            log.warn("MCP heartbeat failed, attempting reconnect: {}", e.getMessage());
+            try {
+                mcpClient.initialize();
+                log.info("MCP reconnect via heartbeat successful");
+            } catch (Exception initEx) {
+                log.error("MCP reconnect via heartbeat failed: {}", initEx.getMessage());
+            }
         }
     }
 
@@ -279,8 +324,8 @@ public class SpringAiMcpGitNexusClient implements GitNexusClient {
     /**
      * 安全读取可选整数字段。
      *
-     * <p>区别于 {@code asInt(0)} 的“默认 0”语义——行号 0 可能被误判为有效行，
-     * 故缺失/null 时返回 {@code null}，让 DTO 字段以 Integer 包装类型表达“未知”。
+     * <p>区别于 {@code asInt(0)} 的"默认 0"语义——行号 0 可能被误判为有效行，
+     * 故缺失/null 时返回 {@code null}，让 DTO 字段以 Integer 包装类型表达"未知"。
      *
      * @param node  JSON 节点
      * @param field 字段名
