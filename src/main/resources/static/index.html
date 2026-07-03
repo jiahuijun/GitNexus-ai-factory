@@ -50,6 +50,12 @@
             overflow-y: auto; margin-top: 8px; }
         .form-input { padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; font-family: inherit; }
         .form-input:focus { outline: none; border-color: #e94560; }
+        .repo-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .repo-chip { display: inline-block; padding: 4px 12px; background: #f0f0f0; border: 1px solid #ddd;
+            border-radius: 16px; font-size: 13px; cursor: pointer; transition: all 0.15s; user-select: none; }
+        .repo-chip:hover { background: #e94560; color: #fff; border-color: #e94560; }
+        .repo-chip.active { background: #e94560; color: #fff; border-color: #e94560; }
+        .repo-loading { font-size: 12px; color: #999; margin-top: 6px; }
         .dag-svg { width: 100%; min-height: 200px; background: #fafafa; border: 1px solid #eee; border-radius: 4px; }
         .status-filter { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
         .status-filter button { padding: 4px 12px; border: 1px solid #ddd; background: #fff; border-radius: 12px; font-size: 12px; cursor: pointer; }
@@ -130,8 +136,10 @@
                 </div>
                 <div class="form-group">
                     <label>目标仓库</label>
-                    <input type="text" id="chat-repo" list="repo-list" value="mysql-binlog-connector-java">
+                    <input type="text" id="chat-repo" list="repo-list" value="mysql-binlog-connector-java" placeholder="点击下方仓库或手动输入">
                     <datalist id="repo-list"></datalist>
+                    <div id="repo-chips" class="repo-chips"></div>
+                    <div id="repo-loading" class="repo-loading"></div>
                 </div>
                 <div class="form-group">
                     <label>管理员 ID</label>
@@ -908,14 +916,34 @@
 
         // === 仓库列表 ===
         async function loadRepos() {
+            const loading = document.getElementById('repo-loading');
+            const chipsDiv = document.getElementById('repo-chips');
             try {
+                loading.textContent = '正在从 GitNexus 拉取已索引仓库...';
                 const res = await fetch(API + '/repos');
                 if (res.ok) {
                     const repos = await res.json();
+                    // 填充 datalist（输入时自动补全）
                     const datalist = document.getElementById('repo-list');
                     datalist.innerHTML = repos.map(r => `<option value="${esc(r.name)}">${esc(r.path)}</option>`).join('');
+                    // 渲染可见的可点击仓库标签
+                    chipsDiv.innerHTML = repos.map(r =>
+                        `<span class="repo-chip" onclick="selectRepo('${esc(r.name)}', event)" title="${esc(r.path)}">${esc(r.name)}</span>`
+                    ).join('');
+                    loading.textContent = repos.length > 0 ? `已索引 ${repos.length} 个仓库（点击选择或手动输入）` : '未找到已索引仓库，请手动输入';
+                } else {
+                    loading.textContent = '获取仓库列表失败（HTTP ' + res.status + '），可手动输入';
                 }
-            } catch (e) { /* 静默失败，用户仍可手工输入 */ }
+            } catch (e) {
+                loading.textContent = '无法连接 GitNexus，可手动输入仓库名';
+            }
+        }
+
+        function selectRepo(name, event) {
+            document.getElementById('chat-repo').value = name;
+            // 高亮选中的 chip
+            document.querySelectorAll('.repo-chip').forEach(c => c.classList.remove('active'));
+            if (event) event.target.classList.add('active');
         }
 
         // 初始加载

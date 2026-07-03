@@ -11,3 +11,4 @@ repos/
 *.env
 application-local.yml
 backend.log
+.gitnexus
