@@ -189,6 +189,7 @@
                 loadTasks();
             } else if (view === 'chat') {
                 document.getElementById('nav-chat').classList.add('active');
+                document.getElementById('nav-back').classList.remove('hidden');
                 // 尝试恢复会话
                 restoreChatSession();
             } else {
