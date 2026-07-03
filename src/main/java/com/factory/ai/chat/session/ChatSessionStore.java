@@ -5,8 +5,8 @@ import com.factory.ai.gitnexus.dto.QueryResult;
 /**
  * 对话澄清会话存储接口。
  *
- * <p>实现类负责会话的 CRUD 与 TTL 管理。默认实现 {@link InMemoryChatSessionStore}
- * 使用 ConcurrentHashMap 存储，不引入外部缓存依赖。</p>
+ * <p>实现类负责会话的 CRUD 与 TTL 管理。默认实现 {@link DbChatSessionStore}
+ * 使用 MySQL 持久化存储；{@link InMemoryChatSessionStore} 作为参考实现保留供测试使用。</p>
  */
 public interface ChatSessionStore {
 

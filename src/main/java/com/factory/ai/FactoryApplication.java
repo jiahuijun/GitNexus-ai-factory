@@ -16,11 +16,11 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * {@code @ComponentScan} 与 {@code @Configuration}，会自动扫描 {@code com.factory.ai}
  * 及其子包下的所有组件（Controller / Service / Mapper 等），并按 classpath 依赖自动装配配置。
  *
- * <p>{@link MapperScan} 指示 MyBatis-Plus 扫描 {@code com.factory.ai.task.mapper} 包下的
- * Mapper 接口并注册为 Bean。
+ * <p>{@link MapperScan} 指示 MyBatis-Plus 扫描 {@code com.factory.ai.task.mapper} 和
+ * {@code com.factory.ai.chat.mapper} 包下的 Mapper 接口并注册为 Bean。
  */
 @SpringBootApplication
-@MapperScan("com.factory.ai.task.mapper")
+@MapperScan({"com.factory.ai.task.mapper", "com.factory.ai.chat.mapper"})
 @EnableScheduling
 public class FactoryApplication {
 
